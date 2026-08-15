@@ -6,6 +6,7 @@ export default {
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
         mono: ["JetBrains Mono", "monospace"],
+        display: ["Space Grotesk", "Inter", "sans-serif"],
       },
       colors: {
         rail: {

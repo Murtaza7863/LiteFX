@@ -9,6 +9,7 @@ import type {
 import { DebtGraph } from "./components/DebtGraph";
 import { ObligationCard } from "./components/ObligationCard";
 import { ObligationDetail } from "./components/ObligationDetail";
+import { LogoMark } from "./components/Logo";
 import { ClaimLinkModal } from "./components/ClaimLinkModal";
 import { ScenarioOverview } from "./components/ScenarioOverview";
 import { AddDataForms } from "./components/AddDataForms";
@@ -321,9 +322,9 @@ export default function App() {
       <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#070b14]/80 backdrop-blur-xl">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Logo />
+            <LogoMark size={36} />
             <div>
-              <p className="text-[15px] font-bold leading-none tracking-tight">
+              <p className="text-[16px] font-bold leading-none tracking-tight font-display">
                 Lite<span className="brand-text">FX</span>
               </p>
               <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
@@ -540,17 +541,6 @@ export default function App() {
 
 /* ── Small presentational pieces ─────────────────── */
 
-function Logo() {
-  return (
-    <div className="relative h-9 w-9 rounded-xl brand-gradient flex items-center justify-center shadow-glow-cyan">
-      <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-        <polyline points="17 6 23 6 23 12" />
-      </svg>
-    </div>
-  );
-}
-
 function ResetIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -577,7 +567,7 @@ function HeroIntro({ entityCount, debtCount }: { entityCount: number; debtCount:
         <p className="chip bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 mb-3">
           <IconGlobe className="h-3.5 w-3.5" /> Cross-border settlement
         </p>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-50">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-50 font-display">
           Collapse messy group debts into <span className="brand-text">minimal transfers</span>
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-400 leading-relaxed">
