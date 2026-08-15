@@ -221,3 +221,14 @@ export function addExpense(exp: Expense): void {
   invalidateDerived();
   save();
 }
+
+// Start from a blank slate (a real tool, not a fixed demo).
+export function clearStore(): void {
+  const st = getStore();
+  st.entities = [];
+  st.expenses = [];
+  st.debtEdges = [];
+  st.ledger = [];
+  invalidateDerived();
+  save();
+}

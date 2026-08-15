@@ -102,6 +102,18 @@ export default function App() {
     [fetchScenario, notify]
   );
 
+  const handleClear = useCallback(async () => {
+    await client.clear();
+    await fetchScenario();
+    notify("Cleared — add your own travelers & expenses");
+  }, [fetchScenario, notify]);
+
+  const handleLoadSample = useCallback(async () => {
+    await client.seed();
+    await fetchScenario();
+    notify("Sample trip loaded");
+  }, [fetchScenario, notify]);
+
   const handleNetting = async () => {
     setLoading("netting");
     try {
@@ -326,6 +338,16 @@ export default function App() {
           <Stepper steps={steps} />
         </section>
 
+        {/* Data entry — the tool's input, front and center */}
+        <section className="animate-fade-in-up">
+          <AddDataForms
+            entities={scenario?.entities ?? []}
+            onAdded={handleDataAdded}
+            onClear={handleClear}
+            onLoadSample={handleLoadSample}
+          />
+        </section>
+
         {/* Reduction stats */}
         {nettingResult && <ReductionStats result={nettingResult} />}
 
@@ -350,13 +372,10 @@ export default function App() {
 
           <section className="animate-fade-in-up">
             <SectionHeader
-              title="Your trip"
+              title="Travelers & expenses"
               sub={`${scenario?.entities.length ?? 0} travelers · ${scenario?.expenses.length ?? 0} expenses`}
             />
-            <div className="space-y-4">
-              <AddDataForms entities={scenario?.entities ?? []} onAdded={handleDataAdded} />
-              <ScenarioOverview entities={scenario?.entities ?? []} expenses={scenario?.expenses ?? []} />
-            </div>
+            <ScenarioOverview entities={scenario?.entities ?? []} expenses={scenario?.expenses ?? []} />
           </section>
         </div>
 
@@ -509,12 +528,12 @@ function HeroIntro({ entityCount, debtCount }: { entityCount: number; debtCount:
           <IconGlobe className="h-3.5 w-3.5" /> Cross-border settlement
         </p>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-50">
-          Collapse messy trip debts into <span className="brand-text">minimal transfers</span>
+          Collapse messy group debts into <span className="brand-text">minimal transfers</span>
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-slate-400 leading-relaxed">
-          {entityCount} travelers across 4 countries generated {debtCount} pairwise debts in 4 currencies. Run the
-          netting agent to collapse them into the fewest possible cross-border transfers — then watch each one get
-          routed through the cheapest rail, including a no-account claim-link path.
+          {debtCount > 0
+            ? `${entityCount} travelers owe each other across ${debtCount} pairwise debts. Run netting to collapse them into the fewest possible cross-border transfers — each routed through the cheapest rail.`
+            : `Add your travelers and expenses above. LiteFX nets the debts into the fewest cross-border transfers and routes each through the cheapest rail — or load the sample trip to explore.`}
         </p>
       </div>
     </section>

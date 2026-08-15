@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getStore, resetStore, updateClaimLink, addEntity, addExpense } from "./store";
+import { getStore, resetStore, updateClaimLink, addEntity, addExpense, clearStore } from "./store";
 import { FX_TABLE } from "./types";
 import { runNetting } from "./agents/netting";
 import { runRouting, getRailTypesExercised } from "./agents/railRouter";
@@ -172,4 +172,16 @@ apiRouter.post("/claim/:token/claim", (req, res) => {
 apiRouter.post("/reset", (_req, res) => {
   resetStore();
   res.json({ success: true, message: "Store reset to seed state." });
+});
+
+// ── POST /api/clear — start from a blank slate ──
+apiRouter.post("/clear", (_req, res) => {
+  clearStore();
+  res.json({ success: true, message: "Cleared. Add your own travelers and expenses." });
+});
+
+// ── POST /api/seed — load the sample trip ──
+apiRouter.post("/seed", (_req, res) => {
+  resetStore();
+  res.json({ success: true, message: "Sample trip loaded." });
 });

@@ -174,6 +174,8 @@ export const client = {
       { payoutMethod }
     ),
   reset: () => api<{ success: boolean; message: string }>("/reset", "POST"),
+  clear: () => api<{ success: boolean; message: string }>("/clear", "POST"),
+  seed: () => api<{ success: boolean; message: string }>("/seed", "POST"),
   addEntity: (body: {
     name: string;
     country: string;

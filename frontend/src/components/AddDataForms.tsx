@@ -19,9 +19,11 @@ const inputCls =
 interface Props {
   entities: Entity[];
   onAdded: (msg: string) => void;
+  onClear: () => void;
+  onLoadSample: () => void;
 }
 
-export function AddDataForms({ entities, onAdded }: Props) {
+export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props) {
   const [open, setOpen] = useState<null | "traveler" | "expense">(null);
 
   // traveler form
@@ -79,8 +81,16 @@ export function AddDataForms({ entities, onAdded }: Props) {
 
   return (
     <div className="glass rounded-2xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="section-title">Your data</h3>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <h3 className="section-title">Your data</h3>
+          <button onClick={onClear} className="text-[11px] text-slate-500 hover:text-red-300 underline-offset-2 hover:underline transition-colors">
+            Clear all
+          </button>
+          <button onClick={onLoadSample} className="text-[11px] text-slate-500 hover:text-cyan-300 underline-offset-2 hover:underline transition-colors">
+            Load sample
+          </button>
+        </div>
         <div className="flex gap-2">
           <button onClick={() => setOpen(open === "traveler" ? null : "traveler")} className="btn-ghost !px-3 !py-1.5 text-xs">
             <IconPlus className="h-3.5 w-3.5" /> Traveler
@@ -169,7 +179,8 @@ export function AddDataForms({ entities, onAdded }: Props) {
 
       {open === null && (
         <p className="text-xs text-slate-500">
-          Add your own travelers and expenses — the netting & routing engine runs on whatever you enter.
+          Key in your own travelers and expenses — the engine nets & routes whatever you enter. “Load sample” restores the
+          pre-vetted example; “Clear all” starts blank.
         </p>
       )}
     </div>
