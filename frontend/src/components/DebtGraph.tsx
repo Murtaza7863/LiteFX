@@ -3,10 +3,10 @@ import type { DebtEdge, Entity, NetObligation } from "../api/client";
 import { COUNTRY_FLAGS, initials } from "../lib/theme";
 
 // ──────────────────────────────────────────────
-// SVG debt graph. Nodes sit on a circle; edges are
-// smooth glowing curves (animated "money flow" when
-// netted). Shows raw pairwise debts or the collapsed
-// net obligations depending on mode.
+// SVG debt graph. Render order: edges → nodes →
+// amount pills (pills on top so they never get
+// muddled by node labels). Curved glowing edges
+// with an animated "money flow" when netted.
 // ──────────────────────────────────────────────
 
 interface Props {
@@ -49,6 +49,17 @@ const CY = H / 2;
 const R = 168;
 const NODE_R = 30;
 
+interface Geom {
+  id: string;
+  isNet: boolean;
+  rail?: string;
+  color: string;
+  d: string;
+  mx: number;
+  my: number;
+  amountUsd: number;
+}
+
 export function DebtGraph({ entities, debtEdges, obligations, mode }: Props) {
   const positions = useMemo(() => {
     const map = new Map<string, { x: number; y: number }>();
@@ -62,7 +73,6 @@ export function DebtGraph({ entities, debtEdges, obligations, mode }: Props) {
 
   const edges = mode === "raw" ? debtEdges : obligations;
 
-  // Fan out parallel edges between the same pair.
   const edgeOffsets = useMemo(() => {
     const pairCount = new Map<string, number>();
     const offsets = new Map<string, number>();
@@ -74,6 +84,36 @@ export function DebtGraph({ entities, debtEdges, obligations, mode }: Props) {
     }
     return offsets;
   }, [edges]);
+
+  const geom = useMemo<Geom[]>(() => {
+    const isNet = mode === "netted";
+    return edges.map((edge) => {
+      const a = positions.get(edge.from);
+      const b = positions.get(edge.to);
+      if (!a || !b) return null;
+      const rail = (edge as NetObligation).chosenRail;
+      const color = isNet ? RAIL_COLORS[rail ?? "stable_bridge"] : RAW_COLOR;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const px = -uy;
+      const py = ux;
+      const sx = a.x + ux * (NODE_R + 2);
+      const sy = a.y + uy * (NODE_R + 2);
+      const ex = b.x - ux * (NODE_R + 7);
+      const ey = b.y - uy * (NODE_R + 7);
+      const offsetIdx = edgeOffsets.get(edge.id) ?? 0;
+      const bend = (isNet ? 0.16 : 0.1) * len + offsetIdx * 16;
+      const cx = (sx + ex) / 2 + px * bend;
+      const cy = (sy + ey) / 2 + py * bend;
+      const d = `M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}`;
+      const mx = 0.25 * sx + 0.5 * cx + 0.25 * ex;
+      const my = 0.25 * sy + 0.5 * cy + 0.25 * ey;
+      return { id: edge.id, isNet, rail, color, d, mx, my, amountUsd: (edge as NetObligation).amountUsd ?? 0 };
+    }).filter(Boolean) as Geom[];
+  }, [edges, positions, edgeOffsets, mode]);
 
   return (
     <div className="glass rounded-2xl p-3 relative overflow-hidden">
@@ -115,74 +155,29 @@ export function DebtGraph({ entities, debtEdges, obligations, mode }: Props) {
             </marker>
           </defs>
 
-          {/* Edges */}
-          {edges.map((edge) => {
-            const a = positions.get(edge.from);
-            const b = positions.get(edge.to);
-            if (!a || !b) return null;
+          {/* Layer 1: edges */}
+          {geom.map((g) => (
+            <g key={g.id}>
+              <path d={g.d} fill="none" stroke={g.color} strokeWidth={g.isNet ? 5 : 3} opacity={g.isNet ? 0.16 : 0.08} filter="url(#soft-glow)" />
+              <path
+                d={g.d}
+                fill="none"
+                stroke={g.color}
+                strokeWidth={g.isNet ? 2 : 1.1}
+                opacity={g.isNet ? 0.95 : 0.4}
+                markerEnd={`url(#${g.isNet ? `arrow-${g.rail ?? "stable_bridge"}` : "arrow-raw"})`}
+                className={g.isNet ? "edge-flow" : undefined}
+              />
+            </g>
+          ))}
 
-            const isNet = mode === "netted";
-            const rail = (edge as NetObligation).chosenRail;
-            const color = isNet ? RAIL_COLORS[rail ?? "stable_bridge"] : RAW_COLOR;
-
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
-            const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            const ux = dx / len;
-            const uy = dy / len;
-            const px = -uy;
-            const py = ux;
-
-            // Trim to node rims so arrowheads stay visible.
-            const sx = a.x + ux * (NODE_R + 2);
-            const sy = a.y + uy * (NODE_R + 2);
-            const ex = b.x - ux * (NODE_R + 7);
-            const ey = b.y - uy * (NODE_R + 7);
-
-            const offsetIdx = edgeOffsets.get(edge.id) ?? 0;
-            const bend = (isNet ? 0.16 : 0.1) * len + offsetIdx * 16;
-            const cx = (sx + ex) / 2 + px * bend;
-            const cy = (sy + ey) / 2 + py * bend;
-            const d = `M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}`;
-
-            // Quadratic midpoint for the label.
-            const mx = 0.25 * sx + 0.5 * cx + 0.25 * ex;
-            const my = 0.25 * sy + 0.5 * cy + 0.25 * ey;
-
-            return (
-              <g key={edge.id}>
-                {/* soft under-glow */}
-                <path d={d} fill="none" stroke={color} strokeWidth={isNet ? 5 : 3} opacity={isNet ? 0.16 : 0.08} filter="url(#soft-glow)" />
-                {/* crisp line */}
-                <path
-                  d={d}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={isNet ? 2 : 1.1}
-                  opacity={isNet ? 0.95 : 0.4}
-                  markerEnd={`url(#${isNet ? `arrow-${rail ?? "stable_bridge"}` : "arrow-raw"})`}
-                  className={isNet ? "edge-flow" : undefined}
-                />
-                {isNet && (
-                  <g>
-                    <rect x={mx - 22} y={my - 10} width={44} height={18} rx={9} fill="rgba(7,11,20,0.96)" stroke={color} strokeOpacity="0.35" />
-                    <text x={mx} y={my + 3} textAnchor="middle" fontSize="10" fontWeight="600" fill={color} fontFamily="JetBrains Mono, monospace">
-                      ${(edge as NetObligation).amountUsd.toFixed(0)}
-                    </text>
-                  </g>
-                )}
-              </g>
-            );
-          })}
-
-          {/* Nodes */}
+          {/* Layer 2: nodes */}
           {entities.map((e) => {
             const pos = positions.get(e.id)!;
             const hasAccount = e.linkedRailAliases.length > 0;
             const [ga, gb] = GRADIENTS[hash(e.id) % GRADIENTS.length];
             return (
               <g key={e.id}>
-                {/* ambient halo */}
                 <circle cx={pos.x} cy={pos.y} r={NODE_R + 10} fill={ga} opacity="0.12" filter="url(#soft-glow)" />
                 {!hasAccount && (
                   <circle cx={pos.x} cy={pos.y} r={NODE_R + 5} fill="none" stroke="#fbbf24" strokeWidth="1.5" strokeDasharray="3 4" opacity="0.7" />
@@ -202,6 +197,16 @@ export function DebtGraph({ entities, debtEdges, obligations, mode }: Props) {
               </g>
             );
           })}
+
+          {/* Layer 3: amount pills on top */}
+          {geom.filter((g) => g.isNet).map((g) => (
+            <g key={`label-${g.id}`}>
+              <rect x={g.mx - 22} y={g.my - 10} width={44} height={18} rx={9} fill="rgba(7,11,20,0.96)" stroke={g.color} strokeOpacity="0.4" />
+              <text x={g.mx} y={g.my + 3} textAnchor="middle" fontSize="10" fontWeight="600" fill={g.color} fontFamily="JetBrains Mono, monospace">
+                ${g.amountUsd.toFixed(0)}
+              </text>
+            </g>
+          ))}
         </svg>
       )}
 

@@ -81,7 +81,7 @@ export function Stepper({ steps }: Props) {
                     {step.label}
                   </span>
                   <span
-                    className={`block text-[11px] leading-tight truncate ${
+                    className={`hidden lg:block text-[11px] leading-tight truncate ${
                       done ? "text-slate-400" : enabled || isLoading ? "text-slate-400" : "text-slate-700"
                     }`}
                   >
