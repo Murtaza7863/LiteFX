@@ -1,6 +1,6 @@
 import type { ReconciliationResult } from "../types";
 import { toUsd } from "../types";
-import { getStore, setReconciliationResults } from "../store";
+import { getStore, setReconciliationResults, setReconciliation } from "../store";
 
 // ──────────────────────────────────────────────
 // Agent 5 — B2B reconciliation agent (lower priority)
@@ -75,6 +75,7 @@ export function runReconciliation(): ReconciliationResult[] {
   }
 
   setReconciliationResults(results);
+  setReconciliation(true, getVendorSummary());
   return results;
 }
 

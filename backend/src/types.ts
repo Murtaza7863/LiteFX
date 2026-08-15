@@ -114,6 +114,22 @@ export interface SettlementRecord {
   timestamp: string;
 }
 
+// Persisted run-summaries so the UI can rehydrate after a reload.
+export interface NettingSummary {
+  rawEdgeCount: number;
+  netEdgeCount: number;
+  reductionRatio: number;
+  balances: { entityId: string; entityName: string; netUsd: number }[];
+}
+
+export interface VendorSummaryRow {
+  vendorId: string;
+  vendorName: string;
+  invoiceAmountUsd: number;
+  settledUsd: number;
+  pendingUsd: number;
+}
+
 // ──────────────────────────────────────────────
 // FX table (MOCKED — in production this would call a live FX API
 // such as Open Exchange Rates or the Wise/Fixer API).

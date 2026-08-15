@@ -11,6 +11,8 @@ import type {
   Invoice,
   ReconciliationResult,
   SettlementRecord,
+  NettingSummary,
+  VendorSummaryRow,
 } from "./types.js";
 import { toUsd } from "./types.js";
 import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
@@ -36,6 +38,10 @@ export interface StoreState {
   invoices: Invoice[];
   reconciliationResults: ReconciliationResult[];
   ledger: SettlementRecord[];
+  nettingSummary: NettingSummary | null;
+  complianceRan: boolean;
+  reconciliationRan: boolean;
+  vendorSummary: VendorSummaryRow[];
 }
 
 function deriveDebtEdges(expenses: Expense[]): DebtEdge[] {
@@ -71,6 +77,10 @@ function freshState(): StoreState {
     invoices: structuredClone(SEED_INVOICES),
     reconciliationResults: [],
     ledger: [],
+    nettingSummary: null,
+    complianceRan: false,
+    reconciliationRan: false,
+    vendorSummary: [],
   };
 }
 
@@ -162,5 +172,23 @@ export function setNetObligations(obs: NetObligation[]): void {
 // ── Settlement ledger ─────────────────────────
 export function addLedgerEntry(rec: SettlementRecord): void {
   getStore().ledger.push(rec);
+  save();
+}
+
+// ── Persisted run-summaries (for UI rehydration) ──
+export function setNettingSummary(s: NettingSummary | null): void {
+  getStore().nettingSummary = s;
+  save();
+}
+
+export function setComplianceRan(v: boolean): void {
+  getStore().complianceRan = v;
+  save();
+}
+
+export function setReconciliation(ran: boolean, vendorSummary: VendorSummaryRow[]): void {
+  const st = getStore();
+  st.reconciliationRan = ran;
+  st.vendorSummary = vendorSummary;
   save();
 }

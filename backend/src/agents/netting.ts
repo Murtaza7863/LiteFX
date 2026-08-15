@@ -1,6 +1,6 @@
 import type { DebtEdge, Entity, NetObligation } from "../types";
 import { COUNTRY_CURRENCY, fromUsd, toUsd } from "../types";
-import { getStore, setNetObligations } from "../store";
+import { getStore, setNetObligations, setNettingSummary } from "../store";
 
 // ──────────────────────────────────────────────
 // Agent 1 — Netting agent
@@ -155,8 +155,7 @@ export function runNetting(): NettingResult {
 
   setNetObligations(obligations);
 
-  return {
-    obligations,
+  const summary = {
     rawEdgeCount: debtEdges.length,
     netEdgeCount: obligations.length,
     reductionRatio:
@@ -164,5 +163,11 @@ export function runNetting(): NettingResult {
         ? Math.round((debtEdges.length / obligations.length) * 100) / 100
         : 0,
     balances: balances.sort((a, b) => b.netUsd - a.netUsd),
+  };
+  setNettingSummary(summary);
+
+  return {
+    obligations,
+    ...summary,
   };
 }

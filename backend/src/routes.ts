@@ -27,6 +27,10 @@ apiRouter.get("/scenario", (_req, res) => {
     complianceFlags: store.complianceFlags,
     reconciliationResults: store.reconciliationResults,
     ledger: store.ledger,
+    nettingSummary: store.nettingSummary,
+    complianceRan: store.complianceRan,
+    reconciliationRan: store.reconciliationRan,
+    vendorSummary: store.vendorSummary,
   });
 });
 

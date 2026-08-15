@@ -3,7 +3,7 @@ import {
   CORRIDOR_LIMITS,
   FREQUENCY_THRESHOLD,
 } from "../types";
-import { getEntity, getStore, setComplianceFlags, updateNetObligation } from "../store";
+import { getEntity, getStore, setComplianceFlags, setComplianceRan, updateNetObligation } from "../store";
 
 // ──────────────────────────────────────────────
 // Agent 4 — Compliance stub (lower priority)
@@ -74,5 +74,6 @@ export function runCompliance(): ComplianceFlag[] {
   }
 
   setComplianceFlags(flags);
+  setComplianceRan(true);
   return flags;
 }

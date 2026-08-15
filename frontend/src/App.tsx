@@ -45,6 +45,13 @@ export default function App() {
   const [claimModalToken, setClaimModalToken] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<{ id: number; msg: string; kind: "ok" | "warn" }[]>([]);
+
+  const notify = useCallback((msg: string, kind: "ok" | "warn" = "ok") => {
+    const id = Date.now() + Math.random();
+    setToasts((t) => [...t, { id, msg, kind }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2800);
+  }, []);
 
   const fetchScenario = useCallback(async () => {
     setLoading("scenario");
@@ -61,6 +68,19 @@ export default function App() {
         }
       }
       setScenario(s!);
+      // Rehydrate UI state from the persisted backend so a reload shows the
+      // true progress (stepper, stats, legend) instead of a stale blank state.
+      setNettingResult(s!.nettingSummary ?? null);
+      setRailTypes(
+        [...new Set(s!.netObligations.map((o) => o.chosenRail).filter(Boolean))] as RailType[]
+      );
+      setComplianceRan(!!s!.complianceRan);
+      setComplianceFlags(s!.complianceFlags ?? []);
+      setReconData(
+        s!.reconciliationRan
+          ? { results: s!.reconciliationResults, vendorSummary: s!.vendorSummary }
+          : null
+      );
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -85,6 +105,7 @@ export default function App() {
       });
       const s = await client.getScenario();
       setScenario(s);
+      notify(`Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers`);
       setRailTypes([]);
       setComplianceRan(false);
       setComplianceFlags([]);
@@ -108,6 +129,7 @@ export default function App() {
       // so surface its flags now too.
       setComplianceRan(true);
       setComplianceFlags(s.complianceFlags ?? []);
+      notify(`Routed ${r.obligations.length} obligations across rails`);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -122,6 +144,7 @@ export default function App() {
       const r = await client.runCompliance();
       setComplianceFlags(r.flags);
       setComplianceRan(true);
+      notify(r.flags.length ? `${r.flags.length} compliance flag(s) raised` : "Compliance clear", r.flags.length ? "warn" : "ok");
       const s = await client.getScenario();
       setScenario(s);
       setError(null);
@@ -137,6 +160,7 @@ export default function App() {
     try {
       const r = await client.runReconciliation();
       setReconData({ results: r.results, vendorSummary: r.vendorSummary });
+      notify("Reconciliation complete");
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -148,9 +172,10 @@ export default function App() {
   const handleSettle = async (id: string) => {
     setLoading(`settle-${id}`);
     try {
-      await client.settle(id);
+      const res = await client.settle(id);
       const s = await client.getScenario();
       setScenario(s);
+      notify(res.message.includes("Claim link") ? "Claim link generated" : "Transfer settled");
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -167,6 +192,7 @@ export default function App() {
       for (const ob of routed) await client.settle(ob.id);
       const s = await client.getScenario();
       setScenario(s);
+      notify(`Settled ${routed.length} transfers`);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -179,6 +205,7 @@ export default function App() {
     setLoading("reset");
     try {
       await client.reset();
+      notify("Reset to seed data");
       setNettingResult(null);
       setRailTypes([]);
       setComplianceRan(false);
@@ -392,6 +419,23 @@ export default function App() {
           </p>
         </footer>
       </main>
+
+      {/* Toast feedback */}
+      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end pointer-events-none">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`animate-fade-in-up pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium shadow-glass backdrop-blur-xl ${
+              t.kind === "warn"
+                ? "bg-orange-500/15 border-orange-500/30 text-orange-200"
+                : "bg-emerald-500/15 border-emerald-500/30 text-emerald-200"
+            }`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${t.kind === "warn" ? "bg-orange-400" : "bg-emerald-400"}`} />
+            {t.msg}
+          </div>
+        ))}
+      </div>
 
       {/* Claim link modal */}
       {claimModalToken && (

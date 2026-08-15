@@ -108,6 +108,10 @@ export interface ScenarioResponse {
   complianceFlags: ComplianceFlag[];
   reconciliationResults: ReconciliationResult[];
   ledger: LedgerEntry[];
+  nettingSummary: NettingResult | null;
+  complianceRan: boolean;
+  reconciliationRan: boolean;
+  vendorSummary: any[];
 }
 
 export interface NettingResult {
@@ -117,7 +121,6 @@ export interface NettingResult {
   reductionRatio: number;
   balances: { entityId: string; entityName: string; netUsd: number }[];
 }
-
 export interface RoutingResult {
   obligations: NetObligation[];
   railTypesExercised: RailType[];
