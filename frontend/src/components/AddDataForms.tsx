@@ -2,15 +2,13 @@ import { useState } from "react";
 import type { Entity } from "../api/client";
 import { client } from "../api/client";
 import { IconPlus } from "./icons";
-import { COUNTRIES, CURRENCY_OPTIONS } from "../lib/countries";
+import { COUNTRIES, CURRENCY_OPTIONS, flagFromCode, railsFor, primaryRail } from "../lib/countries";
 
 // ──────────────────────────────────────────────
 // Practical data entry: add your own travelers and
 // expenses so the engine works on real input, not a
 // canned scenario.
 // ──────────────────────────────────────────────
-
-const RAILS = ["paynow", "promptpay", "zelle", "sepa", "upi", "pix", "other"];
 
 const inputCls =
   "w-full rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400/50";
@@ -103,10 +101,17 @@ export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props
       {open === "traveler" && (
         <div className="grid sm:grid-cols-2 gap-3 animate-fade-in">
           <input className={inputCls} placeholder="Name" value={tName} onChange={(e) => setTName(e.target.value)} />
-          <select className={inputCls} value={tCountry} onChange={(e) => setTCountry(e.target.value)}>
+          <select
+            className={inputCls}
+            value={tCountry}
+            onChange={(e) => {
+              setTCountry(e.target.value);
+              setTRail(primaryRail(e.target.value));
+            }}
+          >
             {COUNTRIES.map((c) => (
               <option key={c.code} value={c.code} className="bg-slate-900">
-                {c.flag} {c.name}
+                {flagFromCode(c.code)} {c.name} ({c.code})
               </option>
             ))}
           </select>
@@ -116,8 +121,10 @@ export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props
           </label>
           {tHasAccount && (
             <select className={inputCls} value={tRail} onChange={(e) => setTRail(e.target.value)}>
-              {RAILS.map((r) => (
-                <option key={r} value={r} className="bg-slate-900">{r}</option>
+              {railsFor(tCountry).map((r) => (
+                <option key={r} value={r} className="bg-slate-900">
+                  {r} ({tCountry})
+                </option>
               ))}
             </select>
           )}

@@ -63,3 +63,19 @@ export const flagFromCode = (code: string): string =>
   code
     .toUpperCase()
     .replace(/./g, (ch) => String.fromCodePoint(127397 + ch.charCodeAt(0)));
+
+// Primary domestic payment rail per country (mirrors the backend).
+const PRIMARY_RAIL: Record<string, string> = {
+  SG: "PayNow", TH: "PromptPay", US: "Zelle", MY: "DuitNow", IN: "UPI",
+  JP: "Zengin", AU: "NPP", BR: "Pix", MX: "CoDi", CA: "Interac",
+  GB: "Faster Payments", KR: "Toss", DE: "SEPA Instant", FR: "SEPA Instant",
+  ES: "SEPA Instant", IT: "SEPA Instant", NL: "SEPA Instant",
+};
+
+// The payment modes offered for a given country.
+export const railsFor = (code: string): string[] => {
+  const primary = PRIMARY_RAIL[code.toUpperCase()];
+  return primary ? [primary, "Bank transfer"] : ["Local instant rail", "Bank transfer (SWIFT)"];
+};
+
+export const primaryRail = (code: string): string => railsFor(code)[0];

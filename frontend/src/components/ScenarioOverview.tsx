@@ -45,7 +45,7 @@ export function ScenarioOverview({ entities, expenses, onDeleteTraveler, onDelet
                     {hasAccount && (
                       <span className="text-slate-600">
                         {" · "}
-                        {e.linkedRailAliases.map((a) => a.railType).join(", ")}
+                        {e.linkedRailAliases.map((a) => a.railType).join(", ")} ({e.country})
                       </span>
                     )}
                   </p>
