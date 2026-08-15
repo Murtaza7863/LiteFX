@@ -16,6 +16,23 @@ This starts both servers concurrently:
 
 Open http://localhost:5173 in your browser.
 
+## Deploy
+
+LiteFX runs as a **single web service** that serves both the API and the built
+frontend on one URL, so it deploys cleanly to any always-on host (the engine is
+stateful, so serverless/static hosts like GitHub Pages or Vercel functions won't
+keep its state).
+
+**Render (one click):** the repo includes a `render.yaml` blueprint.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy/repo/Murtaza7863/LiteFX)
+
+Or manually: create a new **Web Service** on Render from this GitHub repo with
+build command `npm install && npm run build` and start command `npm start`.
+
+**Any VPS / container:** run `npm install && npm run build && npm start` and
+point a reverse proxy at `PORT` (defaults to 3001).
+
 ## Demo Flow (under 2 minutes)
 
 1. **View the scenario** — 6 travelers across Singapore, Thailand, the US, and Germany, with 9 shared expenses and 30 raw pairwise debts.

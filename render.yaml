@@ -1,0 +1,13 @@
+# Render blueprint — one-click deploy of LiteFX (single web service
+# serving both the API and the built frontend on one URL).
+services:
+  - type: web
+    name: litefx
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/scenario
+    envVars:
+      - key: NODE_ENV
+        value: production
