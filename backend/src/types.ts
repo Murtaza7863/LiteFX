@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Core data models for the Agentic Trip Wallet.
+// Core data models for LiteFX (cross-border netting & settlement).
 // See README for the full entity-relationship overview.
 // ──────────────────────────────────────────────
 
@@ -99,6 +99,21 @@ export interface ReconciliationResult {
   note: string;
 }
 
+// A persisted record of an executed (simulated) settlement,
+// giving the app a real double-entry-style ledger.
+export interface SettlementRecord {
+  id: string;
+  obligationId: string;
+  from: string;
+  to: string;
+  rail: RailType;
+  amount: number;
+  currency: string;
+  amountUsd: number;
+  status: "settled" | "claimed";
+  timestamp: string;
+}
+
 // ──────────────────────────────────────────────
 // FX table (MOCKED — in production this would call a live FX API
 // such as Open Exchange Rates or the Wise/Fixer API).
@@ -143,8 +158,8 @@ export const CORRIDOR_LIMITS: Record<string, number> = {
   "DE->DE": 10000,
   "SG->TH": 5000,
   "TH->SG": 5000,
-  "US->DE": 10000,
-  "DE->US": 10000,
+  "US->DE": 300,
+  "DE->US": 300,
   "SG->US": 8000,
   "US->SG": 8000,
   "SG->DE": 8000,

@@ -2,6 +2,113 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: auto;
+}
+
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  @apply antialiased text-slate-100 font-sans;
+  background-color: #070b14;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% -10%, rgba(34, 211, 238, 0.12), transparent),
+    radial-gradient(ellipse 60% 50% at 90% 10%, rgba(139, 92, 246, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 50% 110%, rgba(59, 130, 246, 0.08), transparent);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* ── Utility classes ───────────────────────────── */
+@layer components {
+  .glass {
+    @apply backdrop-blur-xl border border-white/[0.06] rounded-2xl;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+      0 10px 30px -12px rgba(0, 0, 0, 0.5);
+  }
+  .glass-strong {
+    @apply backdrop-blur-xl border border-white/[0.08] rounded-2xl;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.07),
+      0 14px 40px -14px rgba(0, 0, 0, 0.55);
+  }
+  .brand-gradient {
+    @apply bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500;
+  }
+  .brand-text {
+    @apply bg-gradient-to-r from-cyan-300 via-blue-400 to-violet-400 bg-clip-text text-transparent;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+      text-white brand-gradient
+      hover:brightness-110 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]
+      disabled:opacity-40 disabled:pointer-events-none
+      transition-all duration-200;
+    box-shadow: 0 8px 20px -8px rgba(34, 211, 238, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.25);
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+      text-slate-300 bg-white/[0.04] border border-white/[0.08]
+      hover:bg-white/[0.08] active:scale-[0.98]
+      disabled:opacity-40 disabled:pointer-events-none
+      transition-all duration-200;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .section-title {
+    @apply text-sm font-semibold tracking-wide text-slate-400 uppercase;
+  }
+}
+
+/* ── Scrollbar ─────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* ── Text selection ────────────────────────────── */
+::selection {
+  background: rgba(59, 130, 246, 0.4);
+  color: #fff;
+}
+
+/* ── Graph edge "money flow" animation ─────────── */
+@keyframes edgeDash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+.edge-flow {
+  stroke-dasharray: 5 9;
+  animation: edgeDash 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .edge-flow {
+    animation: none;
+  }
+}
+
+/* Refined numbers */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }

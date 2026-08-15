@@ -1,6 +1,20 @@
 import type { NetObligation, RailOption, RailType } from "../types";
 import { getEntity, getStore, updateNetObligation } from "../store";
-import { findRail } from "../data/railOptions";
+import { RAIL_OPTIONS } from "../data/railOptions";
+import { runCompliance } from "./compliance";
+
+// Among the rails of a given type on a corridor, prefer the lowest
+// feeEstimatePct, tie-breaking on lower timeEstimateHours.
+function bestRail(a: string, b: string, type: RailType): RailOption | undefined {
+  return RAIL_OPTIONS.filter(
+    (r) =>
+      r.type === type &&
+      ((r.corridor[0] === a && r.corridor[1] === b) ||
+        (r.corridor[0] === b && r.corridor[1] === a))
+  ).sort(
+    (x, y) => x.feeEstimatePct - y.feeEstimatePct || x.timeEstimateHours - y.timeEstimateHours
+  )[0];
+}
 
 // ──────────────────────────────────────────────
 // Agent 2 — Rail router agent
@@ -58,7 +72,7 @@ export function routeObligation(ob: NetObligation): RoutingDecision {
 
   // ── Step 2: same-country local rail ──
   if (sender.country === recipient.country) {
-    const localRail = findRail(sender.country, recipient.country, "local");
+    const localRail = bestRail(sender.country, recipient.country, "local");
     if (localRail) {
       const reason = `Same-country instant rail (${localRail.railName}) available for ${sender.country}↔${recipient.country}, lowest fee option.`;
       return buildDecision(ob.id, localRail, reason);
@@ -66,14 +80,14 @@ export function routeObligation(ob: NetObligation): RoutingDecision {
   }
 
   // ── Step 3: linked bilateral rail ──
-  const linkedRail = findRail(sender.country, recipient.country, "linked");
+  const linkedRail = bestRail(sender.country, recipient.country, "linked");
   if (linkedRail) {
     const reason = `Linked bilateral rail (${linkedRail.railName}) connects ${sender.country}↔${recipient.country}; both parties have accounts.`;
     return buildDecision(ob.id, linkedRail, reason);
   }
 
   // ── Step 4: fallback — stablecoin bridge ──
-  const bridgeRail = findRail(sender.country, recipient.country, "stable_bridge");
+  const bridgeRail = bestRail(sender.country, recipient.country, "stable_bridge");
   if (bridgeRail) {
     const reason = `No direct local or linked rail for ${sender.country}↔${recipient.country}. Falling back to stablecoin bridge (${bridgeRail.railName}).`;
     return buildDecision(ob.id, bridgeRail, reason);
@@ -109,6 +123,10 @@ function buildDecision(
 export function runRouting(): NetObligation[] {
   const store = getStore();
   const obligations = store.netObligations;
+
+  // Run the compliance stub *before* marking obligations routed, so any
+  // flags are attached and surfaced alongside the routing decision.
+  runCompliance();
 
   for (const ob of obligations) {
     if (ob.status !== "pending") continue;

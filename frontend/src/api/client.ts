@@ -85,6 +85,19 @@ export interface ReconciliationResult {
   note: string;
 }
 
+export interface LedgerEntry {
+  id: string;
+  obligationId: string;
+  from: string;
+  to: string;
+  rail: string;
+  amount: number;
+  currency: string;
+  amountUsd: number;
+  status: "settled" | "claimed";
+  timestamp: string;
+}
+
 export interface ScenarioResponse {
   entities: Entity[];
   expenses: Expense[];
@@ -94,6 +107,7 @@ export interface ScenarioResponse {
   claimLinks: ClaimLink[];
   complianceFlags: ComplianceFlag[];
   reconciliationResults: ReconciliationResult[];
+  ledger: LedgerEntry[];
 }
 
 export interface NettingResult {

@@ -51,6 +51,15 @@ export const RAIL_OPTIONS: RailOption[] = [
     timeEstimateHours: 1,
     requiresRecipientAccount: true,
   },
+  // Alternate linked rail (higher fee) — the router should prefer the cheaper one.
+  {
+    type: "linked",
+    corridor: ["SG", "TH"],
+    railName: "Cross-border QR (alt)",
+    feeEstimatePct: 0.9,
+    timeEstimateHours: 2,
+    requiresRecipientAccount: true,
+  },
 
   // ── Stablecoin bridge (fallback for corridors with no direct rail) ──
   // MOCKED — in production this would call the Circle / Stellar / USDC API.
@@ -60,6 +69,15 @@ export const RAIL_OPTIONS: RailOption[] = [
     railName: "USDC Bridge (Circle)",
     feeEstimatePct: 1.5,
     timeEstimateHours: 24,
+    requiresRecipientAccount: true,
+  },
+  // Alternate stable bridge (higher fee + slower) — router should prefer Circle.
+  {
+    type: "stable_bridge",
+    corridor: ["US", "DE"],
+    railName: "Ripple ODL (alt)",
+    feeEstimatePct: 2.0,
+    timeEstimateHours: 30,
     requiresRecipientAccount: true,
   },
   {

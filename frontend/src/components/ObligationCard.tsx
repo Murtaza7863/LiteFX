@@ -1,22 +1,18 @@
-import type { Entity, NetObligation, RailType } from "../api/client";
+import type { Entity, NetObligation } from "../api/client";
+import { Avatar } from "./Avatar";
+import { RailIcon, IconAlertTriangle } from "./icons";
+import { COUNTRY_FLAGS, RAIL_META } from "../lib/theme";
 
 // ──────────────────────────────────────────────
-// Per-obligation card showing the chosen rail and
-// the routingReason string (surfaced directly in the UI
-// so the demo can show *why* each decision was made).
+// Per-obligation card. Shows the sender → recipient,
+// the amount, the chosen rail with its reasoning
+// string, compliance flags, and a settle action.
 // ──────────────────────────────────────────────
 
-const RAIL_STYLES: Record<RailType, { bg: string; border: string; text: string; label: string }> = {
-  local: { bg: "bg-emerald-950", border: "border-emerald-500", text: "text-emerald-400", label: "Local" },
-  linked: { bg: "bg-blue-950", border: "border-blue-500", text: "text-blue-400", label: "Linked" },
-  claim_link: { bg: "bg-amber-950", border: "border-amber-500", text: "text-amber-400", label: "Claim Link" },
-  stable_bridge: { bg: "bg-purple-950", border: "border-purple-500", text: "text-purple-400", label: "Stable Bridge" },
-};
-
-const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-slate-700 text-slate-300",
-  routed: "bg-blue-900 text-blue-300",
-  settled: "bg-emerald-900 text-emerald-300",
+const STATUS_META: Record<string, { label: string; cls: string }> = {
+  pending: { label: "Pending", cls: "bg-slate-500/15 text-slate-400 border-slate-500/20" },
+  routed: { label: "Routed", cls: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25" },
+  settled: { label: "Settled", cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25" },
 };
 
 interface Props {
@@ -29,54 +25,60 @@ interface Props {
 
 export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onOpenClaim }: Props) {
   const rail = obligation.chosenRail;
-  const railStyle = rail ? RAIL_STYLES[rail] : null;
+  const meta = rail ? RAIL_META[rail] : null;
+  const status =
+    rail === "claim_link" && obligation.claimToken && obligation.status === "routed"
+      ? { label: "Awaiting claim", cls: "bg-amber-500/15 text-amber-300 border-amber-500/25" }
+      : STATUS_META[obligation.status] ?? STATUS_META.pending;
 
   return (
-    <div
-      className={`rounded-xl border p-4 ${railStyle ? `${railStyle.bg} ${railStyle.border}` : "bg-slate-900 border-slate-700"}`}
-    >
-      {/* Header: from → to */}
-      <div className="flex items-center gap-2 mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="font-semibold text-slate-100">{fromEntity.name.trim()}</span>
-            <span className="text-slate-500 text-xs">({fromEntity.country})</span>
-            <span className="text-slate-600 mx-1">→</span>
-            <span className="font-semibold text-slate-100">{toEntity.name.trim()}</span>
-            <span className="text-slate-500 text-xs">({toEntity.country})</span>
+    <div className="glass-strong rounded-2xl p-4 flex flex-col animate-fade-in-up hover:-translate-y-0.5 transition-transform duration-200">
+      {/* Top row: route + status */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Avatar id={fromEntity.id} name={fromEntity.name} size={30} />
+          <ArrowIcon className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+          <Avatar id={toEntity.id} name={toEntity.name} size={30} />
+          <div className="ml-1.5 min-w-0">
+            <p className="text-[13px] font-semibold text-slate-200 leading-tight truncate">
+              {fromEntity.name.trim().split(" ")[0]}
+              <span className="text-slate-500 font-normal"> → </span>
+              {toEntity.name.trim().split(" ")[0]}
+            </p>
+            <p className="text-[11px] text-slate-500 leading-tight">
+              {COUNTRY_FLAGS[fromEntity.country]} {fromEntity.country}
+              <span className="mx-0.5">·</span>
+              {COUNTRY_FLAGS[toEntity.country]} {toEntity.country}
+            </p>
           </div>
         </div>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[obligation.status] ?? ""}`}>
-          {obligation.status}
-        </span>
+        <span className={`chip border ${status.cls}`}>{status.label}</span>
       </div>
 
       {/* Amount */}
       <div className="mb-3">
-        <span className="text-2xl font-bold text-slate-100">
-          {obligation.amount.toLocaleString()} {obligation.settlementCurrency}
-        </span>
-        <span className="text-sm text-slate-400 ml-2">
-          ({obligation.amountUsd.toFixed(2)} USD)
-        </span>
+        <p className="text-2xl font-bold text-slate-50 tracking-tight font-mono">
+          {obligation.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          <span className="text-base font-semibold text-slate-400 ml-1.5">{obligation.settlementCurrency}</span>
+        </p>
+        <p className="text-xs text-slate-500 font-mono">≈ ${obligation.amountUsd.toFixed(2)} USD</p>
       </div>
 
       {/* Rail badge */}
-      {rail && railStyle && (
-        <div className="mb-3 flex items-center gap-2">
-          <span className={`rounded px-2 py-0.5 text-xs font-semibold ${railStyle.text} ${railStyle.bg} border ${railStyle.border}`}>
-            {railStyle.label}
-          </span>
+      {meta && (
+        <div className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 mb-3 ${meta.soft}`}>
+          <RailIcon type={rail!} className={`h-4 w-4 ${meta.text}`} />
+          <span className={`text-xs font-semibold ${meta.text}`}>{meta.label}</span>
         </div>
       )}
 
       {/* Routing reason */}
       {obligation.routingReason && (
-        <div className="mb-3 rounded-lg bg-slate-950/50 p-2.5">
-          <p className="text-xs text-slate-400 leading-relaxed">
-            <span className="text-slate-500 font-medium">Routing reason: </span>
-            {obligation.routingReason}
+        <div className="mb-3 rounded-lg bg-black/25 border border-white/[0.04] px-3 py-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1">
+            Why this rail
           </p>
+          <p className="text-xs text-slate-300 leading-relaxed">{obligation.routingReason}</p>
         </div>
       )}
 
@@ -86,44 +88,57 @@ export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onO
           {obligation.complianceFlags.map((f, i) => (
             <span
               key={i}
-              className="rounded bg-red-950 border border-red-700 px-2 py-0.5 text-xs text-red-400"
+              className="chip bg-red-500/10 border border-red-500/25 text-red-300"
               title={f.message}
             >
-              ⚠ {f.type === "limit_exceeded" ? "Limit exceeded" : "Frequency anomaly"}
+              <IconAlertTriangle className="h-3 w-3" /> {f.type === "limit_exceeded" ? "Limit exceeded" : "Frequency anomaly"}
             </span>
           ))}
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex gap-2">
-        {obligation.status === "routed" && (
-          <button
-            onClick={() => onSettle(obligation.id)}
-            className="flex-1 rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-1.5 text-sm font-medium text-slate-100 transition-colors"
-          >
-            {rail === "claim_link" ? "Generate Claim Link" : "Settle (mock)"}
+      {/* Action */}
+      <div className="mt-auto">
+        {obligation.status === "routed" && !obligation.claimToken && (
+          <button onClick={() => onSettle(obligation.id)} className="btn-primary w-full">
+            {rail === "claim_link" ? "Generate claim link" : "Settle transfer"}
           </button>
         )}
-        {obligation.status === "settled" && obligation.claimToken && (
+        {obligation.claimToken && (
           <button
             onClick={() => onOpenClaim(obligation.claimToken!)}
-            className="flex-1 rounded-lg bg-amber-600 hover:bg-amber-500 px-3 py-1.5 text-sm font-medium text-white transition-colors"
+            className="btn-primary w-full !bg-gradient-to-r !from-amber-500 !to-orange-500"
           >
-            Open Claim Link →
+            Open claim link →
           </button>
         )}
         {obligation.status === "settled" && !obligation.claimToken && (
-          <span className="flex-1 text-center text-sm text-emerald-400 py-1.5">
-            ✓ Settled
-          </span>
+          <div className="flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-emerald-400">
+            <CheckCircleIcon className="h-4 w-4" /> Settled
+          </div>
         )}
         {obligation.status === "pending" && (
-          <span className="flex-1 text-center text-sm text-slate-500 py-1.5">
-            Route first
-          </span>
+          <p className="text-center text-sm text-slate-600 py-2.5">Run routing first</p>
         )}
       </div>
     </div>
+  );
+}
+
+function ArrowIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
+    </svg>
+  );
+}
+
+function CheckCircleIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
   );
 }

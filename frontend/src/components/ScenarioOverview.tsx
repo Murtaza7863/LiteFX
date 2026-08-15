@@ -1,7 +1,9 @@
 import type { Entity, Expense } from "../api/client";
+import { Avatar } from "./Avatar";
+import { COUNTRY_FLAGS, COUNTRY_NAMES } from "../lib/theme";
 
 // ──────────────────────────────────────────────
-// Scenario overview: entity cards + expense list.
+// Scenario overview: traveler cards + expense ledger.
 // ──────────────────────────────────────────────
 
 interface Props {
@@ -11,32 +13,39 @@ interface Props {
 
 export function ScenarioOverview({ entities, expenses }: Props) {
   return (
-    <div className="space-y-4">
-      {/* Entities */}
+    <div className="space-y-5">
+      {/* Travelers */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">
-          Travelers ({entities.length})
+        <h3 className="section-title mb-3">
+          Travelers <span className="text-slate-600 normal-case font-normal">· {entities.length}</span>
         </h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {entities.map((e) => {
             const hasAccount = e.linkedRailAliases.length > 0;
             return (
-              <div
-                key={e.id}
-                className={`rounded-lg border p-3 ${hasAccount ? "border-slate-700 bg-slate-900" : "border-amber-700 bg-amber-950/30"}`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm text-slate-100">{e.name.trim()}</span>
-                  <span className="text-xs text-slate-500">{e.country}</span>
-                </div>
-                <div className="mt-1">
-                  {hasAccount ? (
-                    <span className="text-xs text-blue-400">
-                      {e.linkedRailAliases.map((a) => a.railType).join(", ")}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-amber-500">⚠ No linked account</span>
-                  )}
+              <div key={e.id} className="glass rounded-xl p-3 flex items-center gap-3 animate-fade-in-up">
+                <Avatar id={e.id} name={e.name} size={38} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-slate-200 truncate">{e.name.trim()}</p>
+                    {!hasAccount && (
+                      <span
+                        className="chip bg-amber-500/15 border border-amber-500/30 text-amber-300 !px-1.5 !py-0 !text-[9px]"
+                        title="No linked account — will receive via claim link"
+                      >
+                        no account
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    {COUNTRY_FLAGS[e.country]} {COUNTRY_NAMES[e.country] ?? e.country}
+                    {hasAccount && (
+                      <span className="text-slate-600">
+                        {" · "}
+                        {e.linkedRailAliases.map((a) => a.railType).join(", ")}
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
             );
@@ -46,35 +55,45 @@ export function ScenarioOverview({ entities, expenses }: Props) {
 
       {/* Expenses */}
       <div>
-        <h3 className="text-sm font-semibold text-slate-400 mb-2 uppercase tracking-wide">
-          Shared Expenses ({expenses.length})
+        <h3 className="section-title mb-3">
+          Shared Expenses <span className="text-slate-600 normal-case font-normal">· {expenses.length}</span>
         </h3>
-        <div className="rounded-lg border border-slate-800 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900">
-              <tr className="text-left text-xs text-slate-500">
-                <th className="px-3 py-2">Description</th>
-                <th className="px-3 py-2">Payer</th>
-                <th className="px-3 py-2 text-right">Amount</th>
-                <th className="px-3 py-2 text-center">Split</th>
-              </tr>
-            </thead>
-            <tbody>
-              {expenses.map((exp) => {
-                const payer = entities.find((e) => e.id === exp.payerId);
-                return (
-                  <tr key={exp.id} className="border-t border-slate-800 hover:bg-slate-900/50">
-                    <td className="px-3 py-2 text-slate-300">{exp.description}</td>
-                    <td className="px-3 py-2 text-slate-400">{payer?.name.trim() ?? "?"}</td>
-                    <td className="px-3 py-2 text-right font-mono text-slate-300">
-                      {exp.amount.toLocaleString()} {exp.currency}
-                    </td>
-                    <td className="px-3 py-2 text-center text-slate-500">{exp.participantIds.length}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="glass rounded-xl overflow-hidden">
+          <div className="max-h-72 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-[#0b1120]/90 backdrop-blur">
+                <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500">
+                  <th className="px-3.5 py-2.5 font-medium">Expense</th>
+                  <th className="px-3.5 py-2.5 font-medium">Paid by</th>
+                  <th className="px-3.5 py-2.5 font-medium text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((exp) => {
+                  const payer = entities.find((e) => e.id === exp.payerId);
+                  return (
+                    <tr key={exp.id} className="border-t border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                      <td className="px-3.5 py-2.5">
+                        <p className="text-[13px] text-slate-300 leading-tight">{exp.description}</p>
+                        <p className="text-[11px] text-slate-600">split {exp.participantIds.length} ways</p>
+                      </td>
+                      <td className="px-3.5 py-2.5">
+                        {payer && (
+                          <div className="flex items-center gap-2">
+                            <Avatar id={payer.id} name={payer.name} size={22} />
+                            <span className="text-xs text-slate-400">{payer.name.trim().split(" ")[0]}</span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3.5 py-2.5 text-right font-mono text-[13px] text-slate-200 whitespace-nowrap">
+                        {exp.amount.toLocaleString()} <span className="text-slate-500">{exp.currency}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

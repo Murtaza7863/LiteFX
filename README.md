@@ -1,4 +1,4 @@
-# Agentic Trip Wallet — Cross-border Netting & Settlement Engine
+# LiteFX — Cross-border Netting & Settlement Engine
 
 A multi-agent system that pools multi-currency travel debts across an entire user base, collapses them into the minimum number of cross-border transfers via multilateral netting, then routes each remaining transfer through whichever settlement rail is cheapest and fastest for that specific corridor — including a path for recipients who have no account on the platform at all.
 
@@ -33,7 +33,7 @@ Open http://localhost:5173 in your browser.
 ## Architecture
 
 ```
-trip-wallet/
+LiteFX/
 ├── package.json              # Root — concurrently runs both servers
 ├── backend/
 │   ├── src/
@@ -107,19 +107,27 @@ Matches settled `NetObligation` amounts against the `Invoice` list for vendor-si
 
 ## Mocked Integration Points
 
-Everything below is **mocked** for this hackathon build. Each is labeled in code with a comment noting what the real integration would look like.
+LiteFX is a **semi-working app**: state, FX, and claim links are real; the actual movement of money is still simulated (real rails require bank/payment credentials).
 
-| Component | What's Mocked | Production Integration |
-|-----------|--------------|----------------------|
-| **FX rates** | Static table in `types.ts` | Live FX API (Open Exchange Rates, Wise/Fixer API) |
+**What's real now:**
+- **Persistence** — all state (obligations, claims, ledger) is saved to `backend/data/db.json` and survives restarts.
+- **Live FX** — rates are pulled from [frankfurter.app](https://frankfurter.app) (free, no API key) at boot, with a static fallback if offline.
+- **Shareable claim links** — `GET /claim/:token` serves a real, branded recipient page (no account needed) that claims via the API.
+- **Settlement ledger** — every settle/claim writes a persisted ledger record, shown under Reconciliation.
+
+**What's still simulated:** the rails themselves (no real money moves), KYC/AML, and payout execution.
+
+| Component | Status | Production Integration |
+|-----------|--------|----------------------|
+| **FX rates** | ✅ Live (frankfurter.app) + static fallback | Open Exchange Rates / Wise FX API |
 | **Rail options** | Static table in `data/railOptions.ts` | Rail-routing service (Wise, Airwallex, proprietary layer) |
-| **Settlement execution** | `settleObligation()` returns mocked "settled" | Rail API: PayNow/PromptPay/Zelle/SEPA (local), bilateral gateway (linked), Circle USDC API (stable_bridge) |
-| **Claim-link delivery** | Token generated in-memory, no SMS/email sent | Twilio/SendGrid for link delivery, signed JWT tokens, DB-backed claim state |
+| **Settlement execution** | Simulated; writes a persisted ledger record | Rail API: PayNow/PromptPay/Zelle/SEPA (local), bilateral gateway (linked), Circle USDC API (stable_bridge) |
+| **Claim-link delivery** | ✅ Real shareable URL (`/claim/:token`); no SMS/email | Twilio/SendGrid to deliver the link, signed JWT tokens |
 | **Claim payout** | Payout method stored, no real transfer | Wise, Stripe, or local rail payout API |
-| **KYC/AML** | Rules stub (limit checks + anomaly flags) | Real compliance engine (sanctions screening, transaction monitoring, regulatory reporting) |
-| **Reconciliation** | In-memory matching against mock invoices | ERP/accounting integration (Xero, QuickBooks, SAP) with double-entry rules |
-| **Database** | In-memory store | SQLite (hackathon) or Postgres (production) |
-| **User auth** | None beyond demo claim-link UX | OAuth/OIDC with session management |
+| **KYC/AML** | Rules stub (limit checks + anomaly flags) | Real compliance engine (sanctions screening, transaction monitoring) |
+| **Reconciliation** | Real matching against seeded invoices + ledger | ERP/accounting integration (Xero, QuickBooks, SAP) |
+| **Database** | ✅ File-backed JSON (`backend/data/db.json`) | SQLite / Postgres |
+| **User auth** | None beyond the claim-link flow | OAuth/OIDC with session management |
 
 ## Seeded Scenario
 

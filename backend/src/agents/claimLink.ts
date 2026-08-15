@@ -1,5 +1,5 @@
 import type { ClaimLink, NetObligation } from "../types";
-import { addClaimLink, getClaimLink, getEntity, getNetObligation, updateClaimLink, updateNetObligation } from "../store";
+import { addClaimLink, addLedgerEntry, getClaimLink, getEntity, getNetObligation, updateClaimLink, updateNetObligation } from "../store";
 
 // ──────────────────────────────────────────────
 // Agent 3 — Claim-link agent
@@ -85,6 +85,8 @@ export function claimWithPayoutMethod(
   // Mark the underlying obligation as settled (MOCKED — in production
   // the payout would only be marked settled after the rail confirms).
   updateNetObligation(link.obligationId, { status: "settled" });
+  const claimedOb = getNetObligation(link.obligationId);
+  if (claimedOb) recordLedger(claimedOb, "claimed");
 
   return {
     success: true,
@@ -119,8 +121,25 @@ export function settleObligation(
   //   - linked: bilateral instant payment gateway
   //   - stable_bridge: Circle USDC mint-and-transfer API
   updateNetObligation(obligationId, { status: "settled" });
+  recordLedger(ob, "settled");
   return {
     success: true,
     message: `Settled via ${ob.chosenRail} (mocked).`,
   };
+}
+
+/** Persist a ledger entry for an executed (simulated) settlement. */
+function recordLedger(ob: NetObligation, status: "settled" | "claimed"): void {
+  addLedgerEntry({
+    id: `set-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    obligationId: ob.id,
+    from: ob.from,
+    to: ob.to,
+    rail: ob.chosenRail ?? "stable_bridge",
+    amount: ob.amount,
+    currency: ob.settlementCurrency,
+    amountUsd: ob.amountUsd,
+    status,
+    timestamp: new Date().toISOString(),
+  });
 }

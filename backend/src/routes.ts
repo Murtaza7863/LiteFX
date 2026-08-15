@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getStore, resetStore } from "./store";
+import { getStore, resetStore, updateClaimLink } from "./store";
 import { runNetting } from "./agents/netting";
 import { runRouting, getRailTypesExercised } from "./agents/railRouter";
 import { runCompliance } from "./agents/compliance";
@@ -26,7 +26,13 @@ apiRouter.get("/scenario", (_req, res) => {
     claimLinks: store.claimLinks,
     complianceFlags: store.complianceFlags,
     reconciliationResults: store.reconciliationResults,
+    ledger: store.ledger,
   });
+});
+
+// ── GET /api/ledger — persisted settlement ledger ──
+apiRouter.get("/ledger", (_req, res) => {
+  res.json({ ledger: getStore().ledger });
 });
 
 // ── POST /api/netting/run — run the netting agent ──
@@ -78,6 +84,11 @@ apiRouter.get("/claim/:token", (req, res) => {
   if (!link) {
     res.status(404).json({ success: false, message: "Claim link not found." });
     return;
+  }
+  // Reflect expiry on read: a pending link past its expiry becomes expired.
+  if (link.status === "pending" && new Date(link.expiresAt) < new Date()) {
+    updateClaimLink(link.token, { status: "expired" });
+    link.status = "expired";
   }
   const store = getStore();
   const recipient = store.entities.find((e) => e.id === link.recipientId);
