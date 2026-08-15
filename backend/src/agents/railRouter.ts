@@ -1,20 +1,7 @@
 import type { NetObligation, RailOption, RailType, RailConsideration } from "../types";
 import { getEntity, getStore, updateNetObligation } from "../store";
-import { RAIL_OPTIONS } from "../data/railOptions";
+import { bestRail, corridorOptions } from "../data/railOptions";
 import { runCompliance } from "./compliance";
-
-// Among the rails of a given type on a corridor, prefer the lowest
-// feeEstimatePct, tie-breaking on lower timeEstimateHours.
-function bestRail(a: string, b: string, type: RailType): RailOption | undefined {
-  return RAIL_OPTIONS.filter(
-    (r) =>
-      r.type === type &&
-      ((r.corridor[0] === a && r.corridor[1] === b) ||
-        (r.corridor[0] === b && r.corridor[1] === a))
-  ).sort(
-    (x, y) => x.feeEstimatePct - y.feeEstimatePct || x.timeEstimateHours - y.timeEstimateHours
-  )[0];
-}
 
 // ──────────────────────────────────────────────
 // Agent 2 — Rail router agent
@@ -167,11 +154,7 @@ function buildConsidered(
         : "Recipient has no linked account — the only way to pay them.",
     },
   ];
-  const corridor = RAIL_OPTIONS.filter(
-    (r) =>
-      (r.corridor[0] === sender.country && r.corridor[1] === recipient.country) ||
-      (r.corridor[0] === recipient.country && r.corridor[1] === sender.country)
-  );
+  const corridor = corridorOptions(sender.country, recipient.country);
   for (const o of corridor) {
     list.push({
       type: o.type,

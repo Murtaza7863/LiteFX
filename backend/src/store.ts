@@ -68,19 +68,30 @@ function deriveDebtEdges(expenses: Expense[]): DebtEdge[] {
 
 function freshState(): StoreState {
   return {
-    entities: structuredClone(SEED_ENTITIES),
-    expenses: structuredClone(SEED_EXPENSES),
-    debtEdges: deriveDebtEdges(SEED_EXPENSES),
+    entities: [],
+    expenses: [],
+    debtEdges: [],
     netObligations: [],
     claimLinks: [],
     complianceFlags: [],
-    invoices: structuredClone(SEED_INVOICES),
+    invoices: [],
     reconciliationResults: [],
     ledger: [],
     nettingSummary: null,
     complianceRan: false,
     reconciliationRan: false,
     vendorSummary: [],
+  };
+}
+
+// Optional pre-vetted example (loaded via "Load sample"), not the default.
+function sampleState(): StoreState {
+  return {
+    ...freshState(),
+    entities: structuredClone(SEED_ENTITIES),
+    expenses: structuredClone(SEED_EXPENSES),
+    debtEdges: deriveDebtEdges(SEED_EXPENSES),
+    invoices: structuredClone(SEED_INVOICES),
   };
 }
 
@@ -121,6 +132,11 @@ export function getStore(): StoreState {
 
 export function resetStore(): void {
   state = freshState();
+  save();
+}
+
+export function seedStore(): void {
+  state = sampleState();
   save();
 }
 

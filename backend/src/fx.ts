@@ -10,7 +10,8 @@ import { FX_TABLE } from "./types.js";
 // Frankfurter returns "1 USD = Y cur", so X = 1/Y.
 // ──────────────────────────────────────────────
 
-const FX_URL = "https://api.frankfurter.app/latest?from=USD&to=SGD,THB,EUR";
+const SYMBOLS = Object.keys(FX_TABLE).filter((c) => c !== "USD").join(",");
+const FX_URL = `https://api.frankfurter.app/latest?from=USD&to=${SYMBOLS}`;
 
 export async function refreshFx(): Promise<boolean> {
   try {
@@ -19,7 +20,7 @@ export async function refreshFx(): Promise<boolean> {
     const data = (await res.json()) as { rates?: Record<string, number> };
     const rates = data.rates ?? {};
     let updated = false;
-    for (const cur of ["SGD", "THB", "EUR"] as const) {
+    for (const cur of Object.keys(rates)) {
       const perUsd = rates[cur];
       if (typeof perUsd === "number" && perUsd > 0) {
         FX_TABLE[cur] = Math.round((1 / perUsd) * 10000) / 10000;

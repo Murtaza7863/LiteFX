@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Entity } from "../api/client";
 import { client } from "../api/client";
 import { IconPlus } from "./icons";
+import { COUNTRIES, CURRENCY_OPTIONS } from "../lib/countries";
 
 // ──────────────────────────────────────────────
 // Practical data entry: add your own travelers and
@@ -9,9 +10,7 @@ import { IconPlus } from "./icons";
 // canned scenario.
 // ──────────────────────────────────────────────
 
-const COUNTRIES = ["SG", "TH", "US", "DE"];
-const CURRENCIES = ["SGD", "THB", "USD", "EUR"];
-const RAILS = ["paynow", "promptpay", "zelle", "sepa"];
+const RAILS = ["paynow", "promptpay", "zelle", "sepa", "upi", "pix", "other"];
 
 const inputCls =
   "w-full rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400/50";
@@ -106,7 +105,9 @@ export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props
           <input className={inputCls} placeholder="Name" value={tName} onChange={(e) => setTName(e.target.value)} />
           <select className={inputCls} value={tCountry} onChange={(e) => setTCountry(e.target.value)}>
             {COUNTRIES.map((c) => (
-              <option key={c} value={c} className="bg-slate-900">{c}</option>
+              <option key={c.code} value={c.code} className="bg-slate-900">
+                {c.flag} {c.name}
+              </option>
             ))}
           </select>
           <label className="flex items-center gap-2 text-sm text-slate-300">
@@ -134,7 +135,7 @@ export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props
           <div className="flex gap-2">
             <input className={inputCls} placeholder="Amount" type="number" min="0" value={eAmount} onChange={(e) => setEAmount(e.target.value)} />
             <select className={`${inputCls} !w-24`} value={eCurrency} onChange={(e) => setECurrency(e.target.value)}>
-              {CURRENCIES.map((c) => (
+              {CURRENCY_OPTIONS.map((c) => (
                 <option key={c} value={c} className="bg-slate-900">{c}</option>
               ))}
             </select>

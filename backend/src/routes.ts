@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { getStore, resetStore, updateClaimLink, addEntity, addExpense, clearStore, deleteExpense, deleteEntity } from "./store";
+import { getStore, resetStore, seedStore, updateClaimLink, addEntity, addExpense, clearStore, deleteExpense, deleteEntity } from "./store";
 import { FX_TABLE } from "./types";
+import { COUNTRIES } from "./data/countries";
 import { runNetting } from "./agents/netting";
 import { runRouting, getRailTypesExercised } from "./agents/railRouter";
 import { runCompliance } from "./agents/compliance";
@@ -192,8 +193,13 @@ apiRouter.post("/clear", (_req, res) => {
   res.json({ success: true, message: "Cleared. Add your own travelers and expenses." });
 });
 
+// ── GET /api/meta — supported countries/currencies (broad base) ──
+apiRouter.get("/meta", (_req, res) => {
+  res.json({ countries: COUNTRIES });
+});
+
 // ── POST /api/seed — load the sample trip ──
 apiRouter.post("/seed", (_req, res) => {
-  resetStore();
+  seedStore();
   res.json({ success: true, message: "Sample trip loaded." });
 });

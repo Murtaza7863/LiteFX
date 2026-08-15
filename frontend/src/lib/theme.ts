@@ -1,21 +1,16 @@
 // ──────────────────────────────────────────────
-// Shared theming helpers: country flags, avatar
-// gradients, and rail color tokens.
+// Shared theming helpers: country flags/names,
+// avatar gradients, and rail color tokens.
 // ──────────────────────────────────────────────
+import { COUNTRIES, flagFromCode } from "./countries";
 
-export const COUNTRY_FLAGS: Record<string, string> = {
-  SG: "🇸🇬",
-  TH: "🇹🇭",
-  US: "🇺🇸",
-  DE: "🇩🇪",
-};
+export const COUNTRY_FLAGS: Record<string, string> = Object.fromEntries(
+  COUNTRIES.map((c) => [c.code, flagFromCode(c.code)])
+);
 
-export const COUNTRY_NAMES: Record<string, string> = {
-  SG: "Singapore",
-  TH: "Thailand",
-  US: "United States",
-  DE: "Germany",
-};
+export const COUNTRY_NAMES: Record<string, string> = Object.fromEntries(
+  COUNTRIES.map((c) => [c.code, c.name])
+);
 
 // A palette of pleasant gradient pairs for avatars.
 const GRADIENTS: [string, string][] = [

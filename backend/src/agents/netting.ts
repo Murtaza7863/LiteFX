@@ -1,5 +1,5 @@
 import type { DebtEdge, Entity, NetObligation } from "../types";
-import { COUNTRY_CURRENCY, fromUsd, toUsd } from "../types";
+import { currencyOf, fromUsd, toUsd } from "../types";
 import { getStore, setNetObligations, setNettingSummary } from "../store";
 
 // ──────────────────────────────────────────────
@@ -132,8 +132,7 @@ export function runNetting(): NettingResult {
       }
 
       const recipient = entities.find((e) => e.id === creditor.id)!;
-      const settlementCurrency =
-        COUNTRY_CURRENCY[recipient.country] ?? "USD";
+      const settlementCurrency = currencyOf(recipient.country);
 
       obligations.push({
         id: `net-${++obCounter}`,

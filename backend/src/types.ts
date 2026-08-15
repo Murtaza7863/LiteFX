@@ -149,29 +149,21 @@ export interface VendorSummaryRow {
 // such as Open Exchange Rates or the Wise/Fixer API).
 // ──────────────────────────────────────────────
 
-export const FX_TABLE: Record<string, number> = {
-  USD: 1.0,
-  SGD: 0.74,
-  THB: 0.028,
-  EUR: 1.08,
-};
+import { STATIC_FX, currencyOf } from "./data/countries";
 
-export const COUNTRY_CURRENCY: Record<string, string> = {
-  SG: "SGD",
-  TH: "THB",
-  US: "USD",
-  DE: "EUR",
-};
+// Live-overridable FX table (1 unit of currency = X USD), seeded from a
+// broad static base so any supported country works out of the box.
+export const FX_TABLE: Record<string, number> = { ...STATIC_FX };
+
+export { currencyOf };
 
 export function toUsd(amount: number, currency: string): number {
-  const rate = FX_TABLE[currency];
-  if (!rate) throw new Error(`Unknown currency: ${currency}`);
+  const rate = FX_TABLE[currency] ?? 1;
   return Math.round(amount * rate * 100) / 100;
 }
 
 export function fromUsd(amountUsd: number, currency: string): number {
-  const rate = FX_TABLE[currency];
-  if (!rate) throw new Error(`Unknown currency: ${currency}`);
+  const rate = FX_TABLE[currency] ?? 1;
   return Math.round((amountUsd / rate) * 100) / 100;
 }
 
