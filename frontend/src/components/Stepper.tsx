@@ -64,7 +64,7 @@ export function Stepper({ steps, busy = false }: Props) {
                     <span>{step.icon}</span>
                   )}
                   {active && !isLoading && (
-                    <span className="absolute inset-0 rounded-full border border-cyan-400/40 animate-ping" />
+                    <span className="absolute inset-0 rounded-full border-2 border-cyan-400/50 animate-pulse" />
                   )}
                 </span>
 

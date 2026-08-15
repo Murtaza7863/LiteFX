@@ -1,7 +1,7 @@
 import type { NetObligation, RailOption, RailType, RailConsideration } from "../types";
 import { getEntity, getStore, updateNetObligation } from "../store";
 import { bestRail, corridorOptions } from "../data/railOptions";
-import { runCompliance } from "./compliance";
+import { evaluateCompliance } from "./compliance";
 
 // ──────────────────────────────────────────────
 // Agent 2 — Rail router agent
@@ -111,9 +111,9 @@ export function runRouting(): NetObligation[] {
   const store = getStore();
   const obligations = store.netObligations;
 
-  // Run the compliance stub *before* marking obligations routed, so any
-  // flags are attached and surfaced alongside the routing decision.
-  runCompliance();
+  // Evaluate compliance flags (for badges) without marking the compliance
+  // step as run, so the stepper tick only appears when the user runs it.
+  evaluateCompliance();
 
   for (const ob of obligations) {
     if (ob.status !== "pending") continue;

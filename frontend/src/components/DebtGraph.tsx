@@ -182,6 +182,16 @@ export function DebtGraph({ entities, debtEdges, obligations, mode, onOpenDetail
             const pos = positions.get(e.id)!;
             const hasAccount = e.linkedRailAliases.length > 0;
             const [ga, gb] = GRADIENTS[hash(e.id) % GRADIENTS.length];
+            // Place labels radially OUTWARD so interior edges/pills never cover them.
+            const rdx = pos.x - CX;
+            const rdy = pos.y - CY;
+            const rlen = Math.hypot(rdx, rdy) || 1;
+            const rx = rdx / rlen;
+            const ry = rdy / rlen;
+            const nameX = pos.x + rx * (NODE_R + 16);
+            const nameY = pos.y + ry * (NODE_R + 16);
+            const cX = pos.x + rx * (NODE_R + 30);
+            const cY = pos.y + ry * (NODE_R + 30);
             return (
               <g key={e.id}>
                 <circle cx={pos.x} cy={pos.y} r={NODE_R + 10} fill={ga} opacity="0.12" filter="url(#soft-glow)" />
@@ -194,10 +204,10 @@ export function DebtGraph({ entities, debtEdges, obligations, mode, onOpenDetail
                 <text x={pos.x} y={pos.y + 1} textAnchor="middle" dominantBaseline="middle" fontSize="13" fontWeight="700" fill="#ffffff">
                   {initials(e.name)}
                 </text>
-                <text x={pos.x} y={pos.y + NODE_R + 16} textAnchor="middle" fontSize="11" fontWeight="600" fill="#cbd5e1">
+                <text x={nameX} y={nameY} textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="600" fill="#cbd5e1">
                   {e.name.trim().split(" ")[0]}
                 </text>
-                <text x={pos.x} y={pos.y + NODE_R + 29} textAnchor="middle" fontSize="10" fill="#64748b">
+                <text x={cX} y={cY} textAnchor="middle" dominantBaseline="middle" fontSize="10" fill="#64748b">
                   {COUNTRY_FLAGS[e.country]} {e.country}
                 </text>
               </g>

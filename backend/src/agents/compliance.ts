@@ -18,7 +18,7 @@ import { getEntity, getStore, setComplianceFlags, setComplianceRan, updateNetObl
 // monitoring, regulatory reporting ).
 // ──────────────────────────────────────────────
 
-export function runCompliance(): ComplianceFlag[] {
+export function evaluateCompliance(): ComplianceFlag[] {
   const store = getStore();
   const flags: ComplianceFlag[] = [];
 
@@ -74,6 +74,12 @@ export function runCompliance(): ComplianceFlag[] {
   }
 
   setComplianceFlags(flags);
+  return flags;
+}
+
+// Marks the compliance step as explicitly run (drives the stepper tick).
+export function runCompliance(): ComplianceFlag[] {
+  const flags = evaluateCompliance();
   setComplianceRan(true);
   return flags;
 }

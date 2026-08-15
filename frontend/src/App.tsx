@@ -168,7 +168,7 @@ export default function App() {
       setScenario(s);
       // Routing runs the compliance stub before marking obligations routed,
       // so surface its flags now too.
-      setComplianceRan(true);
+      setComplianceRan(!!s.complianceRan);
       setComplianceFlags(s.complianceFlags ?? []);
       notify(`Routed ${r.obligations.length} obligations across rails`);
       setError(null);
