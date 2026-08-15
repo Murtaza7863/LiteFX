@@ -1,0 +1,159 @@
+// ──────────────────────────────────────────────
+// Core data models for the Agentic Trip Wallet.
+// See README for the full entity-relationship overview.
+// ──────────────────────────────────────────────
+
+export type RailType = "local" | "linked" | "claim_link" | "stable_bridge";
+
+export interface RailAlias {
+  railType: string; // e.g. "paynow", "promptpay", "zelle", "sepa"
+  alias: string; // phone or handle
+}
+
+export interface Entity {
+  id: string;
+  name: string;
+  country: string; // ISO 3166-1 alpha-2: SG, TH, US, DE
+  contact: { type: "email" | "phone"; value: string };
+  linkedRailAliases: RailAlias[]; // empty if the recipient has no account
+}
+
+export interface Expense {
+  id: string;
+  payerId: string;
+  participantIds: string[];
+  amount: number;
+  currency: string;
+  tripId: string;
+  category: string;
+  description: string;
+}
+
+export interface DebtEdge {
+  id: string;
+  from: string; // entityId who owes
+  to: string; // entityId who is owed
+  amount: number;
+  currency: string;
+  amountUsd: number; // converted via mock FX table
+  sourceExpenseId: string;
+}
+
+export interface NetObligation {
+  id: string;
+  from: string;
+  to: string;
+  amount: number; // in settlementCurrency
+  settlementCurrency: string;
+  amountUsd: number; // reference-currency amount (for internal math / display)
+  status: "pending" | "routed" | "settled";
+  chosenRail?: RailType;
+  routingReason?: string;
+  claimToken?: string;
+  complianceFlags?: ComplianceFlag[];
+}
+
+export interface RailOption {
+  type: RailType;
+  corridor: [string, string]; // [countryA, countryB] — order-independent
+  railName: string;
+  feeEstimatePct: number;
+  timeEstimateHours: number;
+  requiresRecipientAccount: boolean;
+}
+
+export interface ClaimLink {
+  token: string;
+  obligationId: string;
+  recipientId: string;
+  recipientContact: string;
+  status: "pending" | "claimed" | "expired";
+  createdAt: string;
+  expiresAt: string; // mock 7-day expiry
+  payoutMethod?: string;
+}
+
+export interface ComplianceFlag {
+  obligationId: string;
+  type: "limit_exceeded" | "frequency_anomaly";
+  message: string;
+  severity: "warning" | "info";
+}
+
+export interface Invoice {
+  id: string;
+  vendorId: string; // entityId of the vendor / payer who fronted the booking
+  vendorName: string;
+  amount: number;
+  currency: string;
+  bookingRef: string;
+  status: "open" | "reconciled" | "mismatch";
+}
+
+export interface ReconciliationResult {
+  invoice: Invoice;
+  matchedObligationId?: string;
+  matchedAmountUsd?: number;
+  invoiceAmountUsd: number;
+  status: "reconciled" | "mismatch" | "unmatched";
+  note: string;
+}
+
+// ──────────────────────────────────────────────
+// FX table (MOCKED — in production this would call a live FX API
+// such as Open Exchange Rates or the Wise/Fixer API).
+// ──────────────────────────────────────────────
+
+export const FX_TABLE: Record<string, number> = {
+  USD: 1.0,
+  SGD: 0.74,
+  THB: 0.028,
+  EUR: 1.08,
+};
+
+export const COUNTRY_CURRENCY: Record<string, string> = {
+  SG: "SGD",
+  TH: "THB",
+  US: "USD",
+  DE: "EUR",
+};
+
+export function toUsd(amount: number, currency: string): number {
+  const rate = FX_TABLE[currency];
+  if (!rate) throw new Error(`Unknown currency: ${currency}`);
+  return Math.round(amount * rate * 100) / 100;
+}
+
+export function fromUsd(amountUsd: number, currency: string): number {
+  const rate = FX_TABLE[currency];
+  if (!rate) throw new Error(`Unknown currency: ${currency}`);
+  return Math.round((amountUsd / rate) * 100) / 100;
+}
+
+// ──────────────────────────────────────────────
+// Mock per-corridor compliance limits (MOCKED — in production
+// these would come from a compliance rules engine / sanctions screening).
+// ──────────────────────────────────────────────
+
+export const CORRIDOR_LIMITS: Record<string, number> = {
+  // key format: "FROM_COUNTRY->TO_COUNTRY"
+  "SG->SG": 20000,
+  "TH->TH": 150000,
+  "US->US": 10000,
+  "DE->DE": 10000,
+  "SG->TH": 5000,
+  "TH->SG": 5000,
+  "US->DE": 10000,
+  "DE->US": 10000,
+  "SG->US": 8000,
+  "US->SG": 8000,
+  "SG->DE": 8000,
+  "DE->SG": 8000,
+  "TH->US": 8000,
+  "US->TH": 8000,
+  "TH->DE": 8000,
+  "DE->TH": 8000,
+};
+
+export const FREQUENCY_THRESHOLD = 3; // flag if same entity pair nets > N times
+export const FREQUENCY_WINDOW_HOURS = 168; // rolling 7 days
