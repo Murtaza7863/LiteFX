@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Entity } from "../api/client";
 import { client } from "../api/client";
 import { IconPlus } from "./icons";
@@ -18,10 +18,15 @@ interface Props {
   onAdded: (msg: string) => void;
   onClear: () => void;
   onLoadSample: () => void;
+  travelerSignal?: number;
 }
 
-export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props) {
+export function AddDataForms({ entities, onAdded, onClear, onLoadSample, travelerSignal = 0 }: Props) {
   const [open, setOpen] = useState<null | "traveler" | "expense">(null);
+
+  useEffect(() => {
+    if (travelerSignal > 0) setOpen("traveler");
+  }, [travelerSignal]);
 
   // traveler form
   const [tName, setTName] = useState("");

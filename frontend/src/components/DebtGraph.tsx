@@ -117,7 +117,7 @@ export function DebtGraph({ entities, debtEdges, obligations, mode, onOpenDetail
   }, [edges, positions, edgeOffsets, mode]);
 
   return (
-    <div className="glass rounded-2xl p-3 relative overflow-hidden">
+    <div className="glass rounded-2xl p-3 relative overflow-hidden animate-fade-in">
       {entities.length === 0 ? (
         <div className="flex items-center justify-center h-[420px] text-slate-500 text-sm">
           No entities loaded.

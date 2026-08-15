@@ -140,6 +140,10 @@ export interface NettingSummary {
   rawEdgeCount: number;
   netEdgeCount: number;
   reductionRatio: number;
+  transfersSaved: number;
+  rawTotalUsd: number;
+  netTotalUsd: number;
+  feeSavingsUsd: number;
   balances: { entityId: string; entityName: string; netUsd: number }[];
 }
 

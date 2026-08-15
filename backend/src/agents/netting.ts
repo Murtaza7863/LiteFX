@@ -1,6 +1,7 @@
 import type { DebtEdge, Entity, NetObligation } from "../types";
 import { currencyOf, fromUsd, toUsd } from "../types";
 import { getStore, setNetObligations, setNettingSummary } from "../store";
+import { bestRail } from "../data/railOptions";
 
 // ──────────────────────────────────────────────
 // Agent 1 — Netting agent
@@ -154,6 +155,22 @@ export function runNetting(): NettingResult {
 
   setNetObligations(obligations);
 
+  // Value metrics: what netting saves vs settling every raw debt individually.
+  const countryOf = (id: string) => entities.find((e) => e.id === id)?.country ?? "US";
+  const pairFeePct = (a: string, b: string): number => {
+    const ca = countryOf(a);
+    const cb = countryOf(b);
+    const local = bestRail(ca, cb, "local");
+    if (local) return local.feeEstimatePct;
+    const linked = bestRail(ca, cb, "linked");
+    if (linked) return linked.feeEstimatePct;
+    return bestRail(ca, cb, "stable_bridge")?.feeEstimatePct ?? 1.5;
+  };
+  const rawTotalUsd = debtEdges.reduce((s, e) => s + e.amountUsd, 0);
+  const netTotalUsd = obligations.reduce((s, o) => s + o.amountUsd, 0);
+  const naiveFeeUsd = debtEdges.reduce((s, e) => s + (e.amountUsd * pairFeePct(e.from, e.to)) / 100, 0);
+  const netFeeUsd = obligations.reduce((s, o) => s + (o.amountUsd * pairFeePct(o.from, o.to)) / 100, 0);
+
   const summary = {
     rawEdgeCount: debtEdges.length,
     netEdgeCount: obligations.length,
@@ -161,6 +178,10 @@ export function runNetting(): NettingResult {
       obligations.length > 0
         ? Math.round((debtEdges.length / obligations.length) * 100) / 100
         : 0,
+    transfersSaved: Math.max(0, debtEdges.length - obligations.length),
+    rawTotalUsd: Math.round(rawTotalUsd * 100) / 100,
+    netTotalUsd: Math.round(netTotalUsd * 100) / 100,
+    feeSavingsUsd: Math.round(Math.max(0, naiveFeeUsd - netFeeUsd) * 100) / 100,
     balances: balances.sort((a, b) => b.netUsd - a.netUsd),
   };
   setNettingSummary(summary);

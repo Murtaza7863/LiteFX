@@ -36,6 +36,10 @@ export default function App() {
     rawEdgeCount: number;
     netEdgeCount: number;
     reductionRatio: number;
+    transfersSaved: number;
+    rawTotalUsd: number;
+    netTotalUsd: number;
+    feeSavingsUsd: number;
     balances: { entityId: string; entityName: string; netUsd: number }[];
   } | null>(null);
   const [railTypes, setRailTypes] = useState<RailType[]>([]);
@@ -47,6 +51,7 @@ export default function App() {
   } | null>(null);
   const [claimModalToken, setClaimModalToken] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [travelerSignal, setTravelerSignal] = useState(0);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: number; msg: string; kind: "ok" | "warn" }[]>([]);
@@ -143,6 +148,10 @@ export default function App() {
         rawEdgeCount: r.rawEdgeCount,
         netEdgeCount: r.netEdgeCount,
         reductionRatio: r.reductionRatio,
+        transfersSaved: r.transfersSaved,
+        rawTotalUsd: r.rawTotalUsd,
+        netTotalUsd: r.netTotalUsd,
+        feeSavingsUsd: r.feeSavingsUsd,
         balances: r.balances,
       });
       const s = await client.getScenario();
@@ -346,7 +355,12 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 space-y-6">
         {/* Hero intro (before any netting) */}
         {!hasNetted && (
-          <HeroIntro entityCount={scenario?.entities.length ?? 0} debtCount={scenario?.debtEdges.length ?? 0} />
+          <HeroIntro
+                        entityCount={scenario?.entities.length ?? 0}
+                        debtCount={scenario?.debtEdges.length ?? 0}
+                        onStart={() => setTravelerSignal((s) => s + 1)}
+                        onSample={handleLoadSample}
+                      />
         )}
 
         {/* Error */}
@@ -370,6 +384,7 @@ export default function App() {
             onAdded={handleDataAdded}
             onClear={handleClear}
             onLoadSample={handleLoadSample}
+            travelerSignal={travelerSignal}
           />
         </section>
 
@@ -387,6 +402,7 @@ export default function App() {
               sub={hasNetted ? `${obligations.length} collapsed transfers` : `${scenario?.debtEdges.length ?? 0} pairwise debts`}
             />
             <DebtGraph
+              key={hasNetted ? "netted" : "raw"}
               entities={scenario?.entities ?? []}
               debtEdges={scenario?.debtEdges ?? []}
               obligations={obligations}
@@ -559,7 +575,17 @@ function SectionHeader({ title, sub }: { title: string; sub?: string }) {
   );
 }
 
-function HeroIntro({ entityCount, debtCount }: { entityCount: number; debtCount: number }) {
+function HeroIntro({
+  entityCount,
+  debtCount,
+  onStart,
+  onSample,
+}: {
+  entityCount: number;
+  debtCount: number;
+  onStart: () => void;
+  onSample: () => void;
+}) {
   return (
     <section className="relative overflow-hidden glass rounded-3xl p-6 sm:p-8 animate-fade-in-up">
       <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full brand-gradient opacity-20 blur-3xl" />
@@ -573,27 +599,87 @@ function HeroIntro({ entityCount, debtCount }: { entityCount: number; debtCount:
         <p className="mt-2 max-w-2xl text-sm text-slate-400 leading-relaxed">
           {debtCount > 0
             ? `${entityCount} travelers owe each other across ${debtCount} pairwise debts. Run netting to collapse them into the fewest possible cross-border transfers — each routed through the cheapest rail.`
-            : `Add your travelers and expenses above. LiteFX nets the debts into the fewest cross-border transfers and routes each through the cheapest rail — or load the sample trip to explore.`}
+            : `Add your travelers and expenses, and LiteFX nets the debts into the fewest cross-border transfers — each routed through the cheapest rail, with a claim link for anyone without an account.`}
         </p>
+        {entityCount === 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={onStart} className="btn-primary">
+              Start your trip
+            </button>
+            <button onClick={onSample} className="btn-ghost">
+              Explore the sample trip
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
-function ReductionStats({ result }: { result: { rawEdgeCount: number; netEdgeCount: number; reductionRatio: number } }) {
+function useCountUp(target: number, duration = 700): number {
+  const [val, setVal] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    const start = performance.now();
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(target * eased);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
+function ReductionStats({
+  result,
+}: {
+  result: {
+    rawEdgeCount: number;
+    netEdgeCount: number;
+    reductionRatio: number;
+    transfersSaved: number;
+    rawTotalUsd: number;
+    netTotalUsd: number;
+    feeSavingsUsd: number;
+  };
+}) {
   const pct = Math.max(6, Math.round((result.netEdgeCount / Math.max(result.rawEdgeCount, 1)) * 100));
+  const saved = useCountUp(result.transfersSaved);
+  const fees = useCountUp(result.feeSavingsUsd);
+  const moved = useCountUp(result.netTotalUsd);
   return (
     <section className="glass rounded-2xl p-5 animate-fade-in-up">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="section-title">Debt reduction</h3>
+        <h3 className="section-title">What netting saved you</h3>
         <span className="chip bg-emerald-500/15 border border-emerald-500/25 text-emerald-300">
           ↓ {result.reductionRatio}× fewer transfers
         </span>
       </div>
+
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <div className="rounded-xl bg-black/25 border border-white/[0.05] p-3 text-center">
+          <p className="font-display text-2xl font-bold text-slate-50 tnum">{Math.round(saved)}</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5">transfers saved</p>
+        </div>
+        <div className="rounded-xl bg-black/25 border border-white/[0.05] p-3 text-center">
+          <p className="font-display text-2xl font-bold text-emerald-300 tnum">${fees.toFixed(2)}</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5">est. fees saved</p>
+        </div>
+        <div className="rounded-xl bg-black/25 border border-white/[0.05] p-3 text-center">
+          <p className="font-display text-2xl font-bold brand-text tnum">${moved.toFixed(2)}</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5">
+            to move <span className="line-through text-slate-600">${result.rawTotalUsd.toFixed(0)}</span>
+          </p>
+        </div>
+      </div>
+
       <div className="space-y-3">
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-slate-500">Raw pairwise debts</span>
+            <span className="text-xs text-slate-500">Without netting · {result.rawEdgeCount} payments</span>
             <span className="font-mono text-sm text-slate-300">{result.rawEdgeCount}</span>
           </div>
           <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
@@ -602,7 +688,7 @@ function ReductionStats({ result }: { result: { rawEdgeCount: number; netEdgeCou
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-slate-500">Net transfers after netting</span>
+            <span className="text-xs text-slate-500">With LiteFX · {result.netEdgeCount} payments</span>
             <span className="font-mono text-sm brand-text font-semibold">{result.netEdgeCount}</span>
           </div>
           <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
