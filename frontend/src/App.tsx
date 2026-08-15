@@ -269,6 +269,16 @@ export default function App() {
     onClick: d.onClick,
   }));
 
+  // Branded loading state so the app never flashes an empty / broken screen.
+  if (!scenario) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <div className="h-10 w-10 rounded-xl brand-gradient animate-pulse-glow" />
+        <p className="text-sm text-slate-500">Loading LiteFX…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen font-sans">
       {/* Header */}
