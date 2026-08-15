@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { getStore, resetStore, updateClaimLink } from "./store";
+import { getStore, resetStore, updateClaimLink, addEntity, addExpense } from "./store";
+import { FX_TABLE } from "./types";
 import { runNetting } from "./agents/netting";
 import { runRouting, getRailTypesExercised } from "./agents/railRouter";
 import { runCompliance } from "./agents/compliance";
@@ -37,6 +38,57 @@ apiRouter.get("/scenario", (_req, res) => {
 // ── GET /api/ledger — persisted settlement ledger ──
 apiRouter.get("/ledger", (_req, res) => {
   res.json({ ledger: getStore().ledger });
+});
+
+// ── POST /api/entities — add a traveler ──
+apiRouter.post("/entities", (req, res) => {
+  const { name, country, contact, railType, alias } = req.body as {
+    name?: string; country?: string; contact?: { type: string; value: string };
+    railType?: string; alias?: string;
+  };
+  if (!name || !country) {
+    res.status(400).json({ success: false, message: "name and country are required." });
+    return;
+  }
+  const entity = {
+    id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
+    name,
+    country,
+    contact: (contact ?? { type: "email", value: "" }) as { type: "email" | "phone"; value: string },
+    linkedRailAliases: railType ? [{ railType, alias: alias || "" }] : [],
+  };
+  addEntity(entity);
+  res.json({ success: true, entity });
+});
+
+// ── POST /api/expenses — add an expense ──
+apiRouter.post("/expenses", (req, res) => {
+  const { payerId, participantIds, amount, currency, description } = req.body as {
+    payerId?: string; participantIds?: string[]; amount?: number; currency?: string; description?: string;
+  };
+  const store = getStore();
+  if (!payerId || !store.entities.some((e) => e.id === payerId)) {
+    res.status(400).json({ success: false, message: "A valid payer is required." });
+    return;
+  }
+  if (!(amount! > 0) || !currency || !FX_TABLE[currency]) {
+    res.status(400).json({ success: false, message: "A positive amount and supported currency are required." });
+    return;
+  }
+  let participants = Array.isArray(participantIds) && participantIds.length ? participantIds : store.entities.map((e) => e.id);
+  if (!participants.includes(payerId)) participants = [...participants, payerId];
+  const expense = {
+    id: `exp-u${Math.random().toString(36).slice(2, 7)}`,
+    payerId,
+    participantIds: participants,
+    amount: Number(amount),
+    currency,
+    tripId: "trip-custom",
+    category: "general",
+    description: description || "Custom expense",
+  };
+  addExpense(expense);
+  res.json({ success: true, expense });
 });
 
 // ── POST /api/netting/run — run the netting agent ──

@@ -10,6 +10,7 @@ import { DebtGraph } from "./components/DebtGraph";
 import { ObligationCard } from "./components/ObligationCard";
 import { ClaimLinkModal } from "./components/ClaimLinkModal";
 import { ScenarioOverview } from "./components/ScenarioOverview";
+import { AddDataForms } from "./components/AddDataForms";
 import { ReconciliationView } from "./components/ReconciliationView";
 import { Stepper } from "./components/Stepper";
 import type { Step } from "./components/Stepper";
@@ -92,6 +93,14 @@ export default function App() {
   useEffect(() => {
     fetchScenario();
   }, [fetchScenario]);
+
+  const handleDataAdded = useCallback(
+    (msg: string) => {
+      fetchScenario();
+      notify(msg);
+    },
+    [fetchScenario, notify]
+  );
 
   const handleNetting = async () => {
     setLoading("netting");
@@ -278,7 +287,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline-flex chip bg-violet-500/10 border border-violet-500/25 text-violet-300">
-              <IconInfo className="h-3.5 w-3.5" /> Mocked demo
+              <IconInfo className="h-3.5 w-3.5" /> Sandbox
             </span>
             <button onClick={handleReset} disabled={loading !== null} className="btn-ghost !px-3 !py-1.5 text-xs">
               <ResetIcon className="h-3.5 w-3.5" /> Reset
@@ -330,8 +339,14 @@ export default function App() {
           </section>
 
           <section className="animate-fade-in-up">
-            <SectionHeader title="Scenario" sub="Bangkok trip, 6 travelers, 4 currencies" />
-            <ScenarioOverview entities={scenario?.entities ?? []} expenses={scenario?.expenses ?? []} />
+            <SectionHeader
+              title="Your trip"
+              sub={`${scenario?.entities.length ?? 0} travelers · ${scenario?.expenses.length ?? 0} expenses`}
+            />
+            <div className="space-y-4">
+              <AddDataForms entities={scenario?.entities ?? []} onAdded={handleDataAdded} />
+              <ScenarioOverview entities={scenario?.entities ?? []} expenses={scenario?.expenses ?? []} />
+            </div>
           </section>
         </div>
 
@@ -405,17 +420,9 @@ export default function App() {
         {/* Footer */}
         <footer className="glass rounded-2xl px-5 py-4">
           <p className="text-xs text-slate-500 leading-relaxed">
-            <span className="font-semibold text-slate-400">Demo note:</span> payment rails, FX rates, claim-link
-            delivery, KYC/AML and reconciliation are all mocked. See the{" "}
-            <a
-              href="https://github.com/Murtaza7863/LiteFX"
-              target="_blank"
-              rel="noreferrer"
-              className="text-cyan-400 hover:underline"
-            >
-              README
-            </a>{" "}
-            for what each would look like in production.
+            <span className="font-semibold text-slate-400">Sandbox:</span> settlement rails are simulated (no real
+            money moves); FX rates are live. Enter your own travelers and expenses above — the engine nets and routes
+            whatever you add.
           </p>
         </footer>
       </main>

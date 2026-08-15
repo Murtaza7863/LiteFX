@@ -174,4 +174,17 @@ export const client = {
       { payoutMethod }
     ),
   reset: () => api<{ success: boolean; message: string }>("/reset", "POST"),
+  addEntity: (body: {
+    name: string;
+    country: string;
+    railType?: string;
+    alias?: string;
+  }) => api<{ success: boolean; entity: Entity }>("/entities", "POST", body),
+  addExpense: (body: {
+    payerId: string;
+    participantIds: string[];
+    amount: number;
+    currency: string;
+    description: string;
+  }) => api<{ success: boolean; expense: Expense }>("/expenses", "POST", body),
 };

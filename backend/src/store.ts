@@ -192,3 +192,32 @@ export function setReconciliation(ran: boolean, vendorSummary: VendorSummaryRow[
   st.vendorSummary = vendorSummary;
   save();
 }
+
+// ── User input: add travelers & expenses ──────
+// Adding data invalidates derived results so the engine
+// recomputes on the user's real input (a working tool,
+// not a canned demo).
+function invalidateDerived(): void {
+  const st = getStore();
+  st.netObligations = [];
+  st.nettingSummary = null;
+  st.complianceFlags = [];
+  st.complianceRan = false;
+  st.reconciliationResults = [];
+  st.reconciliationRan = false;
+  st.vendorSummary = [];
+  st.claimLinks = [];
+}
+
+export function addEntity(e: Entity): void {
+  getStore().entities.push(e);
+  invalidateDerived();
+  save();
+}
+
+export function addExpense(exp: Expense): void {
+  getStore().expenses.push(exp);
+  getStore().debtEdges = deriveDebtEdges(getStore().expenses);
+  invalidateDerived();
+  save();
+}
