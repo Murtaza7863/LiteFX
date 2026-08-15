@@ -208,6 +208,10 @@ export default function App() {
   const handleSettleAll = async () => {
     if (!scenario) return;
     const routed = scenario.netObligations.filter((o) => o.status === "routed");
+    if (routed.length === 0) {
+      notify("Nothing left to settle");
+      return;
+    }
     setLoading("settle-all");
     try {
       for (const ob of routed) await client.settle(ob.id);
@@ -335,7 +339,7 @@ export default function App() {
 
         {/* Stepper */}
         <section className="animate-fade-in-up">
-          <Stepper steps={steps} />
+          <Stepper steps={steps} busy={loading !== null} />
         </section>
 
         {/* Data entry — the tool's input, front and center */}

@@ -17,9 +17,10 @@ export interface Step {
 
 interface Props {
   steps: Step[];
+  busy?: boolean;
 }
 
-export function Stepper({ steps }: Props) {
+export function Stepper({ steps, busy = false }: Props) {
   return (
     <div className="glass rounded-2xl p-2">
       <div className="flex items-stretch gap-0 overflow-x-auto">
@@ -30,7 +31,7 @@ export function Stepper({ steps }: Props) {
           const available = step.state === "available";
           const isLoading = step.state === "loading";
           const locked = step.state === "locked";
-          const clickable = !locked && !isLoading;
+          const clickable = !locked && !isLoading && !busy;
           const enabled = active || available;
 
           return (
