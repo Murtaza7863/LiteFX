@@ -20,6 +20,7 @@ export interface Expense {
   tripId: string;
   category: string;
   description: string;
+  split?: { mode: "equal" | "percent" | "amount"; parts?: Record<string, number> };
 }
 
 export interface DebtEdge {
@@ -200,6 +201,7 @@ export const client = {
     amount: number;
     currency: string;
     description: string;
+    split?: { mode: "equal" | "percent" | "amount"; parts?: Record<string, number> };
   }) => api<{ success: boolean; expense: Expense }>("/expenses", "POST", body),
   deleteExpense: (id: string) => api<{ success: boolean }>(`/expenses/${id}`, "DELETE"),
   deleteEntity: (id: string) => api<{ success: boolean }>(`/entities/${id}`, "DELETE"),

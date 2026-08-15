@@ -87,7 +87,13 @@ export function ScenarioOverview({ entities, expenses, onDeleteTraveler, onDelet
                     <tr key={exp.id} className="border-t border-white/[0.04] hover:bg-white/[0.03] transition-colors">
                       <td className="px-3.5 py-2.5">
                         <p className="text-[13px] text-slate-300 leading-tight">{exp.description}</p>
-                        <p className="text-[11px] text-slate-600">split {exp.participantIds.length} ways</p>
+                        <p className="text-[11px] text-slate-600">
+                          {exp.split && exp.split.mode !== "equal"
+                            ? exp.split.mode === "percent"
+                              ? `custom % split · ${exp.participantIds.length} people`
+                              : `custom amounts · ${exp.participantIds.length} people`
+                            : `split ${exp.participantIds.length} ways`}
+                        </p>
                       </td>
                       <td className="px-3.5 py-2.5">
                         {payer && (

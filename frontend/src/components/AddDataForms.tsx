@@ -36,6 +36,8 @@ export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props
   const [ePayer, setEPayer] = useState("");
   const [eAll, setEAll] = useState(true);
   const [eParticipants, setEParticipants] = useState<string[]>([]);
+  const [eSplitMode, setESplitMode] = useState<"equal" | "percent" | "amount">("equal");
+  const [eParts, setEParts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
 
   const submitTraveler = async () => {
@@ -60,21 +62,34 @@ export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props
     if (!ePayer || !(amt > 0)) return;
     setBusy(true);
     try {
+      const partList = eAll ? entities.map((e) => e.id) : eParticipants;
+      const parts: Record<string, number> = {};
+      if (eSplitMode !== "equal") {
+        for (const pid of partList) {
+          const v = parseFloat(eParts[pid] ?? "");
+          if (v > 0) parts[pid] = v;
+        }
+      }
       await client.addExpense({
         payerId: ePayer,
-        participantIds: eAll ? entities.map((e) => e.id) : eParticipants,
+        participantIds: partList,
         amount: amt,
         currency: eCurrency,
         description: eDesc.trim() || "Custom expense",
+        split: eSplitMode !== "equal" ? { mode: eSplitMode, parts } : undefined,
       });
       setEDesc("");
       setEAmount("");
+      setEParts({});
+      setESplitMode("equal");
       onAdded("Added expense — debts recomputed");
       setOpen(null);
     } finally {
       setBusy(false);
     }
   };
+
+  const partEntities = eAll ? entities : entities.filter((en) => eParticipants.includes(en.id));
 
   return (
     <div className="glass rounded-2xl p-4">
@@ -177,6 +192,40 @@ export function AddDataForms({ entities, onAdded, onClear, onLoadSample }: Props
               })}
             </div>
           )}
+
+          <div className="sm:col-span-2 flex items-center gap-2">
+            <span className="text-xs text-slate-500">Split:</span>
+            <select
+              className={`${inputCls} !w-44`}
+              value={eSplitMode}
+              onChange={(e) => setESplitMode(e.target.value as "equal" | "percent" | "amount")}
+            >
+              <option value="equal" className="bg-slate-900">Equally</option>
+              <option value="percent" className="bg-slate-900">By percentage</option>
+              <option value="amount" className="bg-slate-900">By exact amount</option>
+            </select>
+          </div>
+          {eSplitMode !== "equal" && (
+            <div className="sm:col-span-2 grid sm:grid-cols-2 gap-2">
+              {partEntities.map((en) => (
+                <div key={en.id} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 w-20 truncate">{en.name.trim().split(" ")[0]}</span>
+                  <input
+                    className={inputCls}
+                    type="number"
+                    min="0"
+                    placeholder={eSplitMode === "percent" ? "%" : eCurrency}
+                    value={eParts[en.id] ?? ""}
+                    onChange={(e) => setEParts((p) => ({ ...p, [en.id]: e.target.value }))}
+                  />
+                </div>
+              ))}
+              <p className="sm:col-span-2 text-[11px] text-slate-500">
+                {eSplitMode === "percent" ? "Unassigned % goes to the payer." : "Unassigned amount goes to the payer."}
+              </p>
+            </div>
+          )}
+
           <div className="sm:col-span-2">
             <button onClick={submitExpense} disabled={busy || !ePayer || !(parseFloat(eAmount) > 0)} className="btn-primary w-full">
               Add expense

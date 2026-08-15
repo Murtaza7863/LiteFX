@@ -64,8 +64,9 @@ apiRouter.post("/entities", (req, res) => {
 
 // ── POST /api/expenses — add an expense ──
 apiRouter.post("/expenses", (req, res) => {
-  const { payerId, participantIds, amount, currency, description } = req.body as {
+  const { payerId, participantIds, amount, currency, description, split } = req.body as {
     payerId?: string; participantIds?: string[]; amount?: number; currency?: string; description?: string;
+    split?: { mode?: "equal" | "percent" | "amount"; parts?: Record<string, number> };
   };
   const store = getStore();
   if (!payerId || !store.entities.some((e) => e.id === payerId)) {
@@ -87,6 +88,7 @@ apiRouter.post("/expenses", (req, res) => {
     tripId: "trip-custom",
     category: "general",
     description: description || "Custom expense",
+    split: split?.mode && split.mode !== "equal" ? { mode: split.mode, parts: split.parts ?? {} } : undefined,
   };
   addExpense(expense);
   res.json({ success: true, expense });

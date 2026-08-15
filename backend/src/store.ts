@@ -48,22 +48,57 @@ function deriveDebtEdges(expenses: Expense[]): DebtEdge[] {
   const edges: DebtEdge[] = [];
   let counter = 0;
   for (const exp of expenses) {
-    const share = exp.amount / exp.participantIds.length;
+    const shares = computeShares(exp);
     for (const pid of exp.participantIds) {
       if (pid === exp.payerId) continue;
+      const owed = shares[pid] ?? 0;
+      if (owed <= 0) continue;
       const currency = exp.currency;
       edges.push({
         id: `debt-${++counter}`,
         from: pid,
         to: exp.payerId,
-        amount: Math.round(share * 100) / 100,
+        amount: Math.round(owed * 100) / 100,
         currency,
-        amountUsd: toUsd(share, currency),
+        amountUsd: toUsd(owed, currency),
         sourceExpenseId: exp.id,
       });
     }
   }
   return edges;
+}
+
+// The portion of the bill each participant is responsible for.
+// Supports equal, percentage, and exact-amount splits (Splitwise baseline).
+function computeShares(exp: Expense): Record<string, number> {
+  const n = exp.participantIds.length || 1;
+  const mode = exp.split?.mode ?? "equal";
+  const parts = exp.split?.parts ?? {};
+  const shares: Record<string, number> = {};
+
+  if (mode === "percent") {
+    let assigned = 0;
+    for (const pid of exp.participantIds) {
+      const pct = parts[pid] ?? 0;
+      shares[pid] = (exp.amount * pct) / 100;
+      assigned += pct;
+    }
+    // Give the payer any unassigned remainder so shares sum to the total.
+    const remainderPct = 100 - assigned;
+    if (remainderPct > 0) shares[exp.payerId] = (shares[exp.payerId] ?? 0) + (exp.amount * remainderPct) / 100;
+  } else if (mode === "amount") {
+    let assigned = 0;
+    for (const pid of exp.participantIds) {
+      const amt = parts[pid] ?? 0;
+      shares[pid] = amt;
+      assigned += amt;
+    }
+    const remainder = exp.amount - assigned;
+    if (remainder > 0) shares[exp.payerId] = (shares[exp.payerId] ?? 0) + remainder;
+  } else {
+    for (const pid of exp.participantIds) shares[pid] = exp.amount / n;
+  }
+  return shares;
 }
 
 function freshState(): StoreState {

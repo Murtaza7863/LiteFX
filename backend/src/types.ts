@@ -18,6 +18,12 @@ export interface Entity {
   linkedRailAliases: RailAlias[]; // empty if the recipient has no account
 }
 
+export interface ExpenseSplit {
+  mode: "equal" | "percent" | "amount";
+  // participantId -> percent (0-100) or exact amount, depending on mode
+  parts?: Record<string, number>;
+}
+
 export interface Expense {
   id: string;
   payerId: string;
@@ -27,6 +33,7 @@ export interface Expense {
   tripId: string;
   category: string;
   description: string;
+  split?: ExpenseSplit;
 }
 
 export interface DebtEdge {
