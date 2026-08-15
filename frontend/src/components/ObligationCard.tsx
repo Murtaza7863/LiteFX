@@ -21,10 +21,11 @@ interface Props {
   toEntity: Entity;
   onSettle: (id: string) => void;
   onOpenClaim: (token: string) => void;
+  onOpenDetail: (id: string) => void;
   className?: string;
 }
 
-export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onOpenClaim, className = "" }: Props) {
+export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onOpenClaim, onOpenDetail, className = "" }: Props) {
   const rail = obligation.chosenRail;
   const meta = rail ? RAIL_META[rail] : null;
   const status =
@@ -122,6 +123,15 @@ export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onO
           <p className="text-center text-sm text-slate-600 py-2.5">Run routing first</p>
         )}
       </div>
+
+      {obligation.considered && obligation.considered.length > 0 && (
+        <button
+          onClick={() => onOpenDetail(obligation.id)}
+          className="mt-2 w-full text-center text-[11px] font-medium text-slate-500 hover:text-cyan-300 transition-colors"
+        >
+          View routing decision →
+        </button>
+      )}
     </div>
   );
 }

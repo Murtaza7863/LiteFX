@@ -8,6 +8,7 @@ import type {
 } from "./api/client";
 import { DebtGraph } from "./components/DebtGraph";
 import { ObligationCard } from "./components/ObligationCard";
+import { ObligationDetail } from "./components/ObligationDetail";
 import { ClaimLinkModal } from "./components/ClaimLinkModal";
 import { ScenarioOverview } from "./components/ScenarioOverview";
 import { AddDataForms } from "./components/AddDataForms";
@@ -44,6 +45,7 @@ export default function App() {
     vendorSummary: any[];
   } | null>(null);
   const [claimModalToken, setClaimModalToken] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<{ id: number; msg: string; kind: "ok" | "warn" }[]>([]);
@@ -113,6 +115,24 @@ export default function App() {
     await fetchScenario();
     notify("Sample trip loaded");
   }, [fetchScenario, notify]);
+
+  const handleDeleteExpense = useCallback(
+    async (id: string) => {
+      await client.deleteExpense(id);
+      await fetchScenario();
+      notify("Expense removed — debts recomputed");
+    },
+    [fetchScenario, notify]
+  );
+
+  const handleDeleteTraveler = useCallback(
+    async (id: string) => {
+      await client.deleteEntity(id);
+      await fetchScenario();
+      notify("Traveler removed");
+    },
+    [fetchScenario, notify]
+  );
 
   const handleNetting = async () => {
     setLoading("netting");
@@ -370,6 +390,7 @@ export default function App() {
               debtEdges={scenario?.debtEdges ?? []}
               obligations={obligations}
               mode={hasNetted ? "netted" : "raw"}
+              onOpenDetail={setDetailId}
             />
             {railTypes.length > 0 && <RailLegend types={railTypes} />}
           </section>
@@ -379,7 +400,12 @@ export default function App() {
               title="Travelers & expenses"
               sub={`${scenario?.entities.length ?? 0} travelers · ${scenario?.expenses.length ?? 0} expenses`}
             />
-            <ScenarioOverview entities={scenario?.entities ?? []} expenses={scenario?.expenses ?? []} />
+            <ScenarioOverview
+              entities={scenario?.entities ?? []}
+              expenses={scenario?.expenses ?? []}
+              onDeleteTraveler={handleDeleteTraveler}
+              onDeleteExpense={handleDeleteExpense}
+            />
           </section>
         </div>
 
@@ -401,6 +427,7 @@ export default function App() {
                       toEntity={to}
                       onSettle={handleSettle}
                       onOpenClaim={setClaimModalToken}
+                      onOpenDetail={setDetailId}
                     />
                   </div>
                 );
@@ -478,6 +505,23 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* Obligation detail (routing decision) */}
+      {detailId &&
+        (() => {
+          const ob = obligations.find((o) => o.id === detailId);
+          const from = ob && entityMap.get(ob.from);
+          const to = ob && entityMap.get(ob.to);
+          return ob && from && to ? (
+            <ObligationDetail
+              obligation={ob}
+              fromEntity={from}
+              toEntity={to}
+              debtEdges={scenario?.debtEdges ?? []}
+              onClose={() => setDetailId(null)}
+            />
+          ) : null;
+        })()}
 
       {/* Claim link modal */}
       {claimModalToken && (

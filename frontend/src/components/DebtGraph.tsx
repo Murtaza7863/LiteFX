@@ -14,6 +14,7 @@ interface Props {
   debtEdges: DebtEdge[];
   obligations: NetObligation[];
   mode: "raw" | "netted";
+  onOpenDetail?: (id: string) => void;
 }
 
 const RAIL_COLORS: Record<string, string> = {
@@ -60,7 +61,7 @@ interface Geom {
   amountUsd: number;
 }
 
-export function DebtGraph({ entities, debtEdges, obligations, mode }: Props) {
+export function DebtGraph({ entities, debtEdges, obligations, mode, onOpenDetail }: Props) {
   const positions = useMemo(() => {
     const map = new Map<string, { x: number; y: number }>();
     const n = entities.length;
@@ -157,7 +158,12 @@ export function DebtGraph({ entities, debtEdges, obligations, mode }: Props) {
 
           {/* Layer 1: edges */}
           {geom.map((g) => (
-            <g key={g.id}>
+            <g
+              key={g.id}
+              onClick={g.isNet && onOpenDetail ? () => onOpenDetail(g.id) : undefined}
+              className={g.isNet && onOpenDetail ? "cursor-pointer" : undefined}
+            >
+              {g.isNet && onOpenDetail && <path d={g.d} fill="none" stroke="transparent" strokeWidth={14} />}
               <path d={g.d} fill="none" stroke={g.color} strokeWidth={g.isNet ? 5 : 3} opacity={g.isNet ? 0.16 : 0.08} filter="url(#soft-glow)" />
               <path
                 d={g.d}

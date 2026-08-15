@@ -1,4 +1,4 @@
-import type { NetObligation, RailOption, RailType } from "../types";
+import type { NetObligation, RailOption, RailType, RailConsideration } from "../types";
 import { getEntity, getStore, updateNetObligation } from "../store";
 import { RAIL_OPTIONS } from "../data/railOptions";
 import { runCompliance } from "./compliance";
@@ -131,14 +131,58 @@ export function runRouting(): NetObligation[] {
   for (const ob of obligations) {
     if (ob.status !== "pending") continue;
     const decision = routeObligation(ob);
+    const sender = getEntity(ob.from)!;
+    const recipient = getEntity(ob.to)!;
     updateNetObligation(ob.id, {
       chosenRail: decision.rail,
       routingReason: decision.reason,
+      considered: buildConsidered(sender, recipient, decision.rail, decision.railName),
+      feeUsd: Math.round(ob.amountUsd * decision.feeEstimatePct) / 100,
+      timeHours: decision.timeEstimateHours,
       status: "routed",
     });
   }
 
   return getStore().netObligations;
+}
+
+// Build the list of rails the router evaluated for this corridor, so the
+// UI can show the decision (chosen vs alternatives), not just the outcome.
+function buildConsidered(
+  sender: { country: string },
+  recipient: { country: string; linkedRailAliases: unknown[] },
+  chosen: RailType,
+  chosenName: string
+): RailConsideration[] {
+  const hasAccount = recipient.linkedRailAliases.length > 0;
+  const list: RailConsideration[] = [
+    {
+      type: "claim_link",
+      railName: "Claim Link",
+      feeEstimatePct: 1.0,
+      timeEstimateHours: 48,
+      chosen: chosen === "claim_link",
+      note: hasAccount
+        ? "Recipient has a linked account, so a claim link isn't needed."
+        : "Recipient has no linked account — the only way to pay them.",
+    },
+  ];
+  const corridor = RAIL_OPTIONS.filter(
+    (r) =>
+      (r.corridor[0] === sender.country && r.corridor[1] === recipient.country) ||
+      (r.corridor[0] === recipient.country && r.corridor[1] === sender.country)
+  );
+  for (const o of corridor) {
+    list.push({
+      type: o.type,
+      railName: o.railName,
+      feeEstimatePct: o.feeEstimatePct,
+      timeEstimateHours: o.timeEstimateHours,
+      chosen: o.railName === chosenName,
+      note: o.railName === chosenName ? "Chosen by the router." : "Evaluated but not chosen.",
+    });
+  }
+  return list;
 }
 
 // Helper for the UI / tests

@@ -51,6 +51,20 @@ export interface NetObligation {
   routingReason?: string;
   claimToken?: string;
   complianceFlags?: ComplianceFlag[];
+  considered?: RailConsideration[]; // rails the router evaluated for this corridor
+  feeUsd?: number;
+  timeHours?: number;
+}
+
+// One rail the router evaluated for an obligation, so the UI can
+// show the decision (chosen vs alternatives) rather than just the outcome.
+export interface RailConsideration {
+  type: RailType;
+  railName: string;
+  feeEstimatePct: number;
+  timeEstimateHours: number;
+  chosen: boolean;
+  note: string;
 }
 
 export interface RailOption {

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getStore, resetStore, updateClaimLink, addEntity, addExpense, clearStore } from "./store";
+import { getStore, resetStore, updateClaimLink, addEntity, addExpense, clearStore, deleteExpense, deleteEntity } from "./store";
 import { FX_TABLE } from "./types";
 import { runNetting } from "./agents/netting";
 import { runRouting, getRailTypesExercised } from "./agents/railRouter";
@@ -89,6 +89,18 @@ apiRouter.post("/expenses", (req, res) => {
   };
   addExpense(expense);
   res.json({ success: true, expense });
+});
+
+// ── DELETE /api/expenses/:id — remove an expense ──
+apiRouter.delete("/expenses/:id", (req, res) => {
+  const ok = deleteExpense(req.params.id);
+  res.json({ success: ok });
+});
+
+// ── DELETE /api/entities/:id — remove a traveler (and their expenses) ──
+apiRouter.delete("/entities/:id", (req, res) => {
+  const ok = deleteEntity(req.params.id);
+  res.json({ success: ok });
 });
 
 // ── POST /api/netting/run — run the netting agent ──

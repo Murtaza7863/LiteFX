@@ -1,5 +1,6 @@
 import type { Entity, Expense } from "../api/client";
 import { Avatar } from "./Avatar";
+import { IconX } from "./icons";
 import { COUNTRY_FLAGS, COUNTRY_NAMES } from "../lib/theme";
 
 // ──────────────────────────────────────────────
@@ -9,9 +10,11 @@ import { COUNTRY_FLAGS, COUNTRY_NAMES } from "../lib/theme";
 interface Props {
   entities: Entity[];
   expenses: Expense[];
+  onDeleteTraveler?: (id: string) => void;
+  onDeleteExpense?: (id: string) => void;
 }
 
-export function ScenarioOverview({ entities, expenses }: Props) {
+export function ScenarioOverview({ entities, expenses, onDeleteTraveler, onDeleteExpense }: Props) {
   return (
     <div className="space-y-5">
       {/* Travelers */}
@@ -47,6 +50,15 @@ export function ScenarioOverview({ entities, expenses }: Props) {
                     )}
                   </p>
                 </div>
+                {onDeleteTraveler && (
+                  <button
+                    onClick={() => onDeleteTraveler(e.id)}
+                    className="shrink-0 h-7 w-7 flex items-center justify-center rounded-full text-slate-600 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                    title="Remove traveler"
+                  >
+                    <IconX className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -88,6 +100,17 @@ export function ScenarioOverview({ entities, expenses }: Props) {
                       <td className="px-3.5 py-2.5 text-right font-mono text-[13px] text-slate-200 whitespace-nowrap">
                         {exp.amount.toLocaleString()} <span className="text-slate-500">{exp.currency}</span>
                       </td>
+                      {onDeleteExpense && (
+                        <td className="pr-3 py-2.5 text-right">
+                          <button
+                            onClick={() => onDeleteExpense(exp.id)}
+                            className="h-6 w-6 inline-flex items-center justify-center rounded-full text-slate-600 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                            title="Remove expense"
+                          >
+                            <IconX className="h-3 w-3" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

@@ -222,6 +222,29 @@ export function addExpense(exp: Expense): void {
   save();
 }
 
+export function deleteExpense(id: string): boolean {
+  const st = getStore();
+  const before = st.expenses.length;
+  st.expenses = st.expenses.filter((e) => e.id !== id);
+  if (st.expenses.length === before) return false;
+  st.debtEdges = deriveDebtEdges(st.expenses);
+  invalidateDerived();
+  save();
+  return true;
+}
+
+export function deleteEntity(id: string): boolean {
+  const st = getStore();
+  const before = st.entities.length;
+  st.entities = st.entities.filter((e) => e.id !== id);
+  if (st.entities.length === before) return false;
+  st.expenses = st.expenses.filter((e) => e.payerId !== id && !e.participantIds.includes(id));
+  st.debtEdges = deriveDebtEdges(st.expenses);
+  invalidateDerived();
+  save();
+  return true;
+}
+
 // Start from a blank slate (a real tool, not a fixed demo).
 export function clearStore(): void {
   const st = getStore();

@@ -34,6 +34,15 @@ export interface DebtEdge {
 
 export type RailType = "local" | "linked" | "claim_link" | "stable_bridge";
 
+export interface RailConsideration {
+  type: RailType;
+  railName: string;
+  feeEstimatePct: number;
+  timeEstimateHours: number;
+  chosen: boolean;
+  note: string;
+}
+
 export interface NetObligation {
   id: string;
   from: string;
@@ -46,6 +55,9 @@ export interface NetObligation {
   routingReason?: string;
   claimToken?: string;
   complianceFlags?: ComplianceFlag[];
+  considered?: RailConsideration[];
+  feeUsd?: number;
+  timeHours?: number;
 }
 
 export interface ComplianceFlag {
@@ -189,4 +201,6 @@ export const client = {
     currency: string;
     description: string;
   }) => api<{ success: boolean; expense: Expense }>("/expenses", "POST", body),
+  deleteExpense: (id: string) => api<{ success: boolean }>(`/expenses/${id}`, "DELETE"),
+  deleteEntity: (id: string) => api<{ success: boolean }>(`/entities/${id}`, "DELETE"),
 };
