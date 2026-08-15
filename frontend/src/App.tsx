@@ -387,20 +387,22 @@ export default function App() {
         {hasNetted && (
           <section className="animate-fade-in-up">
             <SectionHeader title="Net obligations" sub={`${obligations.length} transfers to settle`} />
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="flex flex-wrap justify-center gap-4">
               {obligations.map((ob) => {
                 const from = entityMap.get(ob.from);
                 const to = entityMap.get(ob.to);
                 if (!from || !to) return null;
                 return (
-                  <ObligationCard
-                    key={ob.id}
-                    obligation={ob}
-                    fromEntity={from}
-                    toEntity={to}
-                    onSettle={handleSettle}
-                    onOpenClaim={setClaimModalToken}
-                  />
+                  <div key={ob.id} className="flex w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.75rem)]">
+                    <ObligationCard
+                      className="flex-1"
+                      obligation={ob}
+                      fromEntity={from}
+                      toEntity={to}
+                      onSettle={handleSettle}
+                      onOpenClaim={setClaimModalToken}
+                    />
+                  </div>
                 );
               })}
             </div>

@@ -21,9 +21,10 @@ interface Props {
   toEntity: Entity;
   onSettle: (id: string) => void;
   onOpenClaim: (token: string) => void;
+  className?: string;
 }
 
-export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onOpenClaim }: Props) {
+export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onOpenClaim, className = "" }: Props) {
   const rail = obligation.chosenRail;
   const meta = rail ? RAIL_META[rail] : null;
   const status =
@@ -32,7 +33,7 @@ export function ObligationCard({ obligation, fromEntity, toEntity, onSettle, onO
       : STATUS_META[obligation.status] ?? STATUS_META.pending;
 
   return (
-    <div className="glass-strong rounded-2xl p-4 flex flex-col animate-fade-in-up hover:-translate-y-0.5 transition-transform duration-200">
+    <div className={`glass-strong rounded-2xl p-4 flex flex-col animate-fade-in-up hover:-translate-y-0.5 transition-transform duration-200 ${className}`}>
       {/* Top row: route + status */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0">
