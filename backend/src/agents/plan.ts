@@ -1,5 +1,5 @@
 import { cheapestRail } from "../data/railOptions.js";
-import { primaryRail } from "../data/countries.js";
+import { primaryRail, hasUsableAccount } from "../data/countries.js";
 import { getStore } from "../store.js";
 
 export interface SettlementInsight {
@@ -71,7 +71,8 @@ function buildInsights(): SettlementInsight[] {
     if (ob.chosenRail !== "claim_link") continue;
     const to = st.entities.find((e) => e.id === ob.to);
     const from = st.entities.find((e) => e.id === ob.from);
-    if (!to || !from || to.linkedRailAliases.length > 0) continue;
+    if (!to || !from || hasUsableAccount(to.country, to.linkedRailAliases))
+      continue;
     const pick = cheapestRail(from.country, to.country, true);
     const prev = totals.get(to.id);
     if (!prev) {
@@ -91,6 +92,8 @@ function buildInsights(): SettlementInsight[] {
     const savingsUsd = round2(currentFeeUsd - linkedFeeUsd);
     const suggestedRail = primaryRail(to.country);
     const name = to.name.trim();
+    const usesDomesticCorridor =
+      linked.type === "local" || linked.type === "linked";
     out.push({
       type: "link_account",
       recipientId: to.id,
@@ -102,10 +105,11 @@ function buildInsights(): SettlementInsight[] {
       savingsUsd,
       wouldBeRail: linked.type,
       wouldBeRailName: linked.railName,
-      message:
-        savingsUsd > 0
+      message: usesDomesticCorridor
+        ? savingsUsd > 0
           ? `If ${name} linked ${suggestedRail}, this payout would use ${linked.railName} (~${linked.feeEstimatePct}%) instead of a claim link (1%) — about $${savingsUsd.toFixed(2)} less in fees.`
-          : `If ${name} linked ${suggestedRail}, they could be paid on ${linked.railName} instead of a claim link.`,
+          : `If ${name} linked ${suggestedRail}, they could be paid on ${linked.railName} instead of a claim link.`
+        : `If ${name} linked a ${suggestedRail} account, this would settle over ${linked.railName} instead of a claim link. The sender would not pay via ${suggestedRail}.`,
     });
   }
   return out;

@@ -207,6 +207,7 @@ export interface RoutingResult {
 export interface ClaimDetails {
   link: ClaimLink;
   recipient: Entity;
+  sender?: Entity | null;
   obligation: NetObligation;
   payoutOptions: string[];
 }

@@ -1,4 +1,30 @@
 import type { Entity, NetObligation } from "../api/client";
+import {
+  LINKED_CORRIDORS,
+  canonicalizeRail,
+  linkedKey,
+  sharedLocalRail,
+} from "../../../backend/src/data/countries";
+
+function corridorRailName(
+  type: NetObligation["chosenRail"],
+  from: Entity,
+  to: Entity,
+): string | undefined {
+  if (type === "local") {
+    if (from.country === to.country) {
+      return (
+        canonicalizeRail(to.country, to.linkedRailAliases[0]?.railType) ??
+        sharedLocalRail(from.country, to.country)
+      );
+    }
+    return sharedLocalRail(from.country, to.country);
+  }
+  if (type === "linked")
+    return LINKED_CORRIDORS[linkedKey(from.country, to.country)];
+  if (type === "stable_bridge") return "USDC Bridge (Circle)";
+  return undefined;
+}
 
 export function paymentSlip(
   obligation: NetObligation,
@@ -11,24 +37,29 @@ export function paymentSlip(
   const ref = `LiteFX ${obligation.id}`;
   const alias =
     to.linkedRailAliases[0]?.alias || to.contact.value || to.name.trim();
-  const rail = to.linkedRailAliases[0]?.railType;
   const payer = from.name.trim();
   const payee = to.name.trim();
 
   if (obligation.chosenRail === "claim_link") {
     return {
       label: "Claim link",
-      text: `${payer} shares a claim link. ${payee} picks how to receive ${amount} ($${obligation.amountUsd.toFixed(2)}). Ref ${ref}.`,
+      text: `${payer} (${from.country}) shares a claim link. ${payee} (${to.country}) picks a local payout for ${amount} ($${obligation.amountUsd.toFixed(2)}). The sender does not use ${payee}'s domestic rail. Ref ${ref}.`,
     };
   }
-  if (obligation.chosenRail === "stable_bridge") {
+
+  const railName = corridorRailName(obligation.chosenRail, from, to);
+  if (
+    obligation.chosenRail === "stable_bridge" ||
+    (obligation.chosenRail && !railName)
+  ) {
     return {
       label: "USDC send",
-      text: `${payer} sends $${obligation.amountUsd.toFixed(2)} USDC to ${payee} (sandbox wallet 0xLITEFX…${to.id.slice(-4)}). Ref ${ref}.`,
+      text: `${payer} (${from.country}) sends $${obligation.amountUsd.toFixed(2)} USDC to ${payee} (${to.country}) (sandbox wallet 0xLITEFX…${to.id.slice(-4)}). Ref ${ref}.`,
     };
   }
+
   return {
-    label: rail || "Local send",
-    text: `${payer} sends ${amount} ($${obligation.amountUsd.toFixed(2)}) via ${rail || "the local rail"} to ${alias}. Reference ${ref}.`,
+    label: railName || "Local send",
+    text: `${payer} (${from.country}) sends ${amount} ($${obligation.amountUsd.toFixed(2)}) via ${railName || "the local rail"} to ${alias} (${to.country}). Reference ${ref}.`,
   };
 }

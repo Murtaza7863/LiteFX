@@ -2,14 +2,12 @@ import { Router } from "express";
 import {
   getStore,
   seedStore,
-  updateClaimLink,
   addExpense,
   updateEntity,
   updateExpense,
   clearStore,
   deleteExpense,
   deleteEntity,
-  getClaimLink,
   findClaimOwner,
   withClaimTrip,
   validateExpenseSplit,
@@ -35,7 +33,11 @@ import {
 } from "./store";
 import { FX_TABLE } from "./types";
 import type { Expense } from "./types";
-import { canonicalizeRail, countryByCode } from "./data/countries";
+import {
+  canonicalizeRail,
+  countryByCode,
+  linkedAliasesFromUpdate,
+} from "./data/countries";
 import { classifyExpense, isExpenseCategory } from "./data/classifyExpense";
 import { getFxSnapshot } from "./fx";
 import { runNetting } from "./agents/netting";
@@ -50,7 +52,7 @@ import { buildSettlementPlan } from "./agents/plan";
 import {
   settleObligation,
   claimWithPayoutMethod,
-  payoutOptionsFor,
+  getClaimDetails,
 } from "./agents/claimLink";
 import {
   authRateOk,
@@ -433,35 +435,17 @@ apiRouter.patch("/entities/:id", (req, res) => {
     }
     patch.contact = parsedContact;
   }
-  if (railType !== undefined) {
-    const rail = canonicalizeRail(country ?? existing.country, railType);
-    if (railType?.trim() && !rail) {
-      res
-        .status(400)
-        .json({ success: false, message: "Unsupported settlement rail." });
-      return;
-    }
-    patch.linkedRailAliases = rail
-      ? [
-          {
-            railType: rail,
-            alias: alias || existing.linkedRailAliases[0]?.alias || "",
-          },
-        ]
-      : [];
-  } else if (country !== undefined && existing.linkedRailAliases[0]) {
-    const rail = canonicalizeRail(
-      country,
-      existing.linkedRailAliases[0].railType,
-    );
-    patch.linkedRailAliases = rail
-      ? [
-          {
-            railType: rail,
-            alias: existing.linkedRailAliases[0].alias,
-          },
-        ]
-      : [];
+  const rails = linkedAliasesFromUpdate(existing, {
+    country,
+    railType,
+    alias,
+  });
+  if ("error" in rails) {
+    res.status(400).json({ success: false, message: rails.error });
+    return;
+  }
+  if (rails.linkedRailAliases) {
+    patch.linkedRailAliases = rails.linkedRailAliases;
   }
   const updated = updateEntity(req.params.id, patch);
   if (!updated) {
@@ -637,24 +621,8 @@ apiRouter.post("/settlement/:id/settle", (req, res) => {
 apiRouter.get("/claim/:token", (req, res) => {
   const token = req.params.token;
   const result = withClaimTrip(token, () => {
-    const link = getClaimLink(token);
-    if (!link) return null;
-    if (link.status === "pending" && new Date(link.expiresAt) < new Date()) {
-      updateClaimLink(link.token, { status: "expired" });
-      link.status = "expired";
-    }
-    const store = getStore();
-    const recipient = store.entities.find((e) => e.id === link.recipientId);
-    const obligation = store.netObligations.find(
-      (o) => o.id === link.obligationId,
-    );
-    if (!recipient || !obligation) return null;
-    return {
-      link,
-      recipient,
-      obligation,
-      payoutOptions: payoutOptionsFor(recipient.country),
-    };
+    const details = getClaimDetails(token);
+    return details;
   });
   if (!result) {
     res.status(404).json({

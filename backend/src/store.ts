@@ -24,6 +24,7 @@ import type {
 import { toUsd } from "./types.js";
 import { getFxSnapshot } from "./fx.js";
 import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
+import { alignRailsToCountry } from "./data/countries.js";
 
 // ──────────────────────────────────────────────
 // File-backed store. Each user owns a workspace of
@@ -346,9 +347,11 @@ function coerceContacts(raw: unknown): SavedContact[] {
       name,
       country,
       contact,
-      linkedRailAliases: Array.isArray(c.linkedRailAliases)
-        ? c.linkedRailAliases.filter((a) => a && typeof a.railType === "string")
-        : [],
+      linkedRailAliases: alignRailsToCountry(
+        country,
+        Array.isArray(c.linkedRailAliases) ? c.linkedRailAliases : [],
+        true,
+      ),
       createdAt: c.createdAt || nowIso(),
       updatedAt: c.updatedAt || nowIso(),
     });
@@ -565,7 +568,14 @@ function coerceTrip(parsed: Partial<StoreState>): StoreState {
   const merged: StoreState = {
     ...base,
     ...parsed,
-    entities: parsed.entities ?? [],
+    entities: (parsed.entities ?? []).map((e) => ({
+      ...e,
+      linkedRailAliases: alignRailsToCountry(
+        e.country,
+        e.linkedRailAliases,
+        true,
+      ),
+    })),
     expenses: parsed.expenses ?? [],
     debtEdges: parsed.debtEdges ?? [],
     netObligations: parsed.netObligations ?? [],
@@ -588,7 +598,14 @@ function coerceTrip(parsed: Partial<StoreState>): StoreState {
   const newSum = repriced.reduce((s, e) => s + e.amountUsd, 0);
   merged.debtEdges = repriced;
   const fxChanged = parsed.fxAsOf !== merged.fxAsOf;
-  if (fxChanged || Math.abs(oldSum - newSum) > 0.005) {
+  const railsChanged = (parsed.entities ?? []).some((e, i) => {
+    const next = merged.entities[i];
+    return (
+      JSON.stringify(e.linkedRailAliases ?? []) !==
+      JSON.stringify(next?.linkedRailAliases ?? [])
+    );
+  });
+  if (fxChanged || railsChanged || Math.abs(oldSum - newSum) > 0.005) {
     merged.netObligations = [];
     merged.nettingSummary = null;
     merged.claimLinks = [];
@@ -932,6 +949,11 @@ export function resetEngineOutputs(): void {
 }
 
 export function addEntity(e: Entity): void {
+  e.linkedRailAliases = alignRailsToCountry(
+    e.country,
+    e.linkedRailAliases,
+    false,
+  );
   getStore().entities.push(e);
   invalidateDerived();
   save();
@@ -962,6 +984,11 @@ export function updateEntity(
   if (patch.contact !== undefined) e.contact = patch.contact;
   if (patch.linkedRailAliases !== undefined)
     e.linkedRailAliases = patch.linkedRailAliases;
+  e.linkedRailAliases = alignRailsToCountry(
+    e.country,
+    e.linkedRailAliases,
+    countryChanged,
+  );
   if (patch.contactId !== undefined) e.contactId = patch.contactId;
   if (patch.name && st.nettingSummary) {
     for (const b of st.nettingSummary.balances) {
@@ -1163,7 +1190,11 @@ export function upsertContact(person: {
     existing.name = name;
     existing.country = person.country;
     existing.contact = person.contact;
-    existing.linkedRailAliases = person.linkedRailAliases;
+    existing.linkedRailAliases = alignRailsToCountry(
+      person.country,
+      person.linkedRailAliases,
+      true,
+    );
     existing.updatedAt = now;
     save();
     return existing;
@@ -1176,7 +1207,11 @@ export function upsertContact(person: {
     name,
     country: person.country,
     contact: person.contact,
-    linkedRailAliases: person.linkedRailAliases,
+    linkedRailAliases: alignRailsToCountry(
+      person.country,
+      person.linkedRailAliases,
+      true,
+    ),
     createdAt: now,
     updatedAt: now,
   };

@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { clearStore, getStore, seedStore, updateClaimLink } from "../store.js";
+import {
+  clearStore,
+  getStore,
+  seedStore,
+  updateClaimLink,
+  updateEntity,
+} from "../store.js";
 import {
   claimWithPayoutMethod,
   createClaimLink,
+  getClaimDetails,
   settleObligation,
 } from "./claimLink.js";
 import { runNetting } from "./netting.js";
@@ -145,3 +152,20 @@ test("re-running netting drops old claim links so IDs cannot be reused", () => {
 function getNetStatus(id: string) {
   return getStore().netObligations.find((o) => o.id === id)?.status;
 }
+
+test("claim payouts follow the recipient's country after a move to Bahrain", () => {
+  seedStore();
+  updateEntity("ent-eve", { country: "BH" });
+  runNetting();
+  runRouting();
+  const ob = getStore().netObligations.find((o) => o.to === "ent-eve");
+  assert.ok(ob);
+  const link = settleObligation(ob.id);
+  assert.equal(link.success, true);
+  const details = getClaimDetails(link.link!.token);
+  assert.ok(details);
+  assert.equal(details.recipient.country, "BH");
+  assert.ok(details.payoutOptions.some((o) => /Fawri/i.test(o)));
+  assert.ok(!details.payoutOptions.some((o) => /PayNow/i.test(o)));
+  assert.ok(details.sender);
+});

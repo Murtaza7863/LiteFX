@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ClaimDetails } from "../api/client";
 
 import { client, isStaticEngine } from "../api/client";
+import { COUNTRY_NAMES } from "../lib/theme";
 import { claimUrl } from "../lib/urls";
 import { Avatar } from "./Avatar";
 import {
@@ -167,7 +168,23 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                   <span className="text-slate-200 font-medium">
                     {details.recipient.name.trim()}
                   </span>
-                  , a travel settlement is waiting for you. No signup needed.
+                  {details.sender ? (
+                    <>
+                      {" "}
+                      — from {details.sender.name.trim()} in{" "}
+                      {COUNTRY_NAMES[details.sender.country] ??
+                        details.sender.country}
+                      . Pick a{" "}
+                      {COUNTRY_NAMES[details.recipient.country] ??
+                        details.recipient.country}{" "}
+                      payout. The sender does not pay on this rail.
+                    </>
+                  ) : (
+                    <>
+                      , a travel settlement is waiting for you. No signup
+                      needed.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -266,7 +283,10 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
               <>
                 {/* Payout picker */}
                 <p className="text-slate-300 mb-2.5 text-sm font-semibold">
-                  Choose how to receive it
+                  Choose a{" "}
+                  {COUNTRY_NAMES[details.recipient.country] ??
+                    details.recipient.country}{" "}
+                  payout
                 </p>
                 <div className="mb-5 space-y-2">
                   {details.payoutOptions.map((opt) => {

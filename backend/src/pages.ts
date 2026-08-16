@@ -86,7 +86,7 @@ function claimPage(token: string): string {
   const body = `
     <div class="brand"><span class="logo"></span> Lite<span class="fx">FX</span></div>
     <h1>You've been paid</h1>
-    <p class="muted">Someone settled a travel debt to you via LiteFX. Choose how to receive it — no account needed.</p>
+    <p class="muted">Someone settled a travel debt to you via LiteFX. Choose a local payout in your country — the sender is not paying on that rail.</p>
     <div id="root"><p class="muted">Loading…</p></div>
     <script>
       const TOKEN = ${JSON.stringify(token)};
@@ -97,7 +97,10 @@ function claimPage(token: string): string {
         const ob = d.obligation || {};
         const opts = (d.payoutOptions || []).map((o,i) =>
           '<label class="opt"><input type="radio" name="p" value="'+i+'"> '+esc(o)+'</label>').join('');
+        const from = d.sender ? esc(d.sender.name)+' in '+esc(d.sender.country) : 'Someone';
+        const where = d.recipient ? esc(d.recipient.country) : '';
         root.innerHTML =
+          '<p class="muted" style="margin-bottom:12px">'+from+' sent this. Pick a '+esc(where)+' payout.</p>' +
           '<div class="amount"><div class="big">'+(ob.amount||0).toLocaleString()+' '+(ob.settlementCurrency||'')+'</div>' +
           '<div class="muted">≈ $'+(ob.amountUsd||0).toFixed(2)+' USD</div></div>' +
           (d.link.status === 'claimed' ? '<div class="ok">Already claimed ✓</div>'

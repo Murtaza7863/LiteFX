@@ -17,6 +17,26 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 export { payoutOptionsFor };
 export const PAYOUT_OPTIONS = payoutOptionsFor("");
 
+export function getClaimDetails(token: string) {
+  const link = getClaimLink(token);
+  if (!link) return null;
+  if (link.status === "pending" && new Date(link.expiresAt) < new Date()) {
+    updateClaimLink(link.token, { status: "expired" });
+    link.status = "expired";
+  }
+  const recipient = getEntity(link.recipientId);
+  const obligation = getNetObligation(link.obligationId);
+  if (!recipient || !obligation) return null;
+  const sender = getEntity(obligation.from);
+  return {
+    link,
+    recipient,
+    sender: sender ?? null,
+    obligation,
+    payoutOptions: payoutOptionsFor(recipient.country),
+  };
+}
+
 function generateClaimToken(): string {
   return `cl_${randomBytes(18).toString("base64url")}`;
 }

@@ -7,6 +7,7 @@ import {
   resetEngineOutputs,
 } from "../store";
 import { cheapestRail, feePctForPair } from "../data/railOptions";
+import { hasUsableAccount } from "../data/countries";
 
 // ──────────────────────────────────────────────
 // Agent 1 — Netting agent
@@ -76,7 +77,7 @@ function entityById(entities: Entity[], id: string): Entity | undefined {
 }
 
 function hasAccount(ent: Entity | undefined): boolean {
-  return !!ent && ent.linkedRailAliases.length > 0;
+  return !!ent && hasUsableAccount(ent.country, ent.linkedRailAliases);
 }
 
 function makeObligation(

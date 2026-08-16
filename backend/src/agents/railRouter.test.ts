@@ -4,6 +4,7 @@ import {
   clearStore,
   getStore,
   seedStore,
+  updateEntity,
   updateNetObligation,
 } from "../store.js";
 import { traveler } from "../testUtil.js";
@@ -14,6 +15,15 @@ import {
   overrideRail,
   linkRecipientAccount,
 } from "./railRouter.js";
+import {
+  COUNTRIES,
+  LINKED_CORRIDORS,
+  canonicalizeRail,
+  linkedKey,
+  payoutOptionsFor,
+  primaryRail,
+  sharedLocalRail,
+} from "../data/countries.js";
 
 afterEach(() => {
   clearStore();
@@ -120,4 +130,151 @@ test("linking Eve's account re-routes her claim_link onto PayNow without wiping 
   const after = getStore().netObligations.find((o) => o.to === "ent-eve");
   assert.equal(after?.chosenRail, "local");
   assert.equal(after?.feeUsd, 0);
+});
+
+function assertCorridorsLegal() {
+  const st = getStore();
+  for (const e of st.entities) {
+    for (const a of e.linkedRailAliases) {
+      assert.ok(
+        canonicalizeRail(e.country, a.railType),
+        `${e.name} in ${e.country} still linked to ${a.railType}`,
+      );
+    }
+  }
+  for (const o of st.netObligations) {
+    const from = st.entities.find((e) => e.id === o.from);
+    const to = st.entities.find((e) => e.id === o.to);
+    assert.ok(from && to, o.id);
+    if (o.chosenRail === "local") {
+      assert.ok(
+        sharedLocalRail(from.country, to.country),
+        `local ${from.country}→${to.country}`,
+      );
+    }
+    if (o.chosenRail === "linked") {
+      assert.ok(
+        LINKED_CORRIDORS[linkedKey(from.country, to.country)],
+        `linked ${from.country}→${to.country}`,
+      );
+    }
+    const chosen = o.considered?.find((c) => c.chosen);
+    if (chosen?.type === "local") {
+      assert.ok(sharedLocalRail(from.country, to.country), chosen.railName);
+    }
+    if (chosen?.type === "linked") {
+      assert.ok(
+        LINKED_CORRIDORS[linkedKey(from.country, to.country)],
+        chosen.railName,
+      );
+    }
+  }
+}
+
+function assertBahrainNeverUsesPayNow() {
+  assertCorridorsLegal();
+  const st = getStore();
+  for (const o of st.netObligations) {
+    const from = st.entities.find((e) => e.id === o.from);
+    const to = st.entities.find((e) => e.id === o.to);
+    if (!from || !to) continue;
+    if (from.country !== "BH" && to.country !== "BH") continue;
+    const chosen = o.considered?.find((c) => c.chosen);
+    assert.doesNotMatch(
+      chosen?.railName ?? "",
+      /PayNow/i,
+      `${from.name} (${from.country}) → ${to.name} (${to.country}) chose ${chosen?.railName}`,
+    );
+    if (from.country === "BH") {
+      assert.notEqual(from.linkedRailAliases[0]?.railType, "PayNow");
+    }
+    if (to.country === "BH") {
+      assert.notEqual(to.linkedRailAliases[0]?.railType, "PayNow");
+      for (const opt of payoutOptionsFor(to.country)) {
+        assert.doesNotMatch(opt, /PayNow/i);
+      }
+    }
+  }
+}
+
+test("moving Alice to Bahrain remaps PayNow and never routes BH corridors onto PayNow", () => {
+  seedStore();
+  updateEntity("ent-alice", { country: "BH" });
+  assert.equal(
+    getStore().entities.find((e) => e.id === "ent-alice")?.linkedRailAliases[0]
+      ?.railType,
+    "Fawri+",
+  );
+  runNetting();
+  runRouting();
+  assertBahrainNeverUsesPayNow();
+});
+
+test("moving Bob to Bahrain never asks a Bahrain payer to use PayNow", () => {
+  seedStore();
+  updateEntity("ent-bob", { country: "BH" });
+  runNetting();
+  runRouting();
+  assertBahrainNeverUsesPayNow();
+});
+
+test("moving Eve to Bahrain offers Fawri+ claim payouts, not PayNow", () => {
+  seedStore();
+  updateEntity("ent-eve", { country: "BH" });
+  runNetting();
+  runRouting();
+  assertBahrainNeverUsesPayNow();
+  const eve = getStore().netObligations.find((o) => o.to === "ent-eve");
+  assert.equal(eve?.chosenRail, "claim_link");
+  const opts = payoutOptionsFor("BH");
+  assert.ok(opts.some((o) => /Fawri/i.test(o)));
+  assert.ok(!opts.some((o) => /PayNow/i.test(o)));
+});
+
+test("moving Alice to any listed country remaps PayNow and only routes legal corridors", () => {
+  for (const c of COUNTRIES) {
+    seedStore();
+    const alice = updateEntity("ent-alice", { country: c.code });
+    assert.ok(alice, c.code);
+    assert.ok(
+      canonicalizeRail(c.code, alice.linkedRailAliases[0]?.railType),
+      `${c.code} kept ${alice.linkedRailAliases[0]?.railType}`,
+    );
+    if (c.code !== "SG") {
+      assert.equal(alice.linkedRailAliases[0]?.railType, primaryRail(c.code));
+    }
+    runNetting();
+    runRouting();
+    assertCorridorsLegal();
+    const evePay = getStore().netObligations.find((o) => o.to === "ent-eve");
+    if (evePay?.chosenRail === "claim_link") {
+      const opts = payoutOptionsFor("SG");
+      assert.ok(opts.some((o) => /PayNow/i.test(o)));
+    }
+    clearStore();
+  }
+});
+
+test("moving Eve to any listed country offers that country's payouts, not leftover PayNow", () => {
+  for (const c of COUNTRIES) {
+    seedStore();
+    updateEntity("ent-eve", { country: c.code });
+    runNetting();
+    runRouting();
+    assertCorridorsLegal();
+    const eve = getStore().netObligations.find((o) => o.to === "ent-eve");
+    assert.equal(eve?.chosenRail, "claim_link", c.code);
+    const opts = payoutOptionsFor(c.code);
+    assert.ok(
+      opts.some((o) => o.includes(primaryRail(c.code))),
+      `${c.code} missing ${primaryRail(c.code)}`,
+    );
+    if (c.code !== "SG") {
+      assert.ok(
+        !opts.some((o) => /PayNow/i.test(o)),
+        `${c.code} still offered PayNow`,
+      );
+    }
+    clearStore();
+  }
 });

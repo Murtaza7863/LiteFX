@@ -330,10 +330,12 @@ test("renaming a traveler keeps nets but updates the balance label", () => {
   );
 });
 
-test("changing a traveler country wipes derived nets", () => {
+test("changing a traveler country remaps leftover rails and wipes derived nets", () => {
   seedStore();
   runNetting();
-  updateEntity("ent-alice", { country: "US" });
+  const alice = updateEntity("ent-alice", { country: "BH" });
+  assert.equal(alice?.country, "BH");
+  assert.equal(alice?.linkedRailAliases[0]?.railType, "Fawri+");
   assert.equal(getStore().netObligations.length, 0);
 });
 

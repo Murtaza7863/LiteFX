@@ -13,6 +13,9 @@ import {
   primaryRail,
   railsFor,
   canonicalizeRail,
+  alignRailsToCountry,
+  hasUsableAccount,
+  linkedAliasesFromUpdate,
 } from "./countries.js";
 import { CORRIDOR_LIMITS, FX_TABLE } from "../types.js";
 
@@ -147,4 +150,67 @@ test("country list is sorted by name for the picker", () => {
     names,
     [...names].sort((a, b) => a.localeCompare(b)),
   );
+});
+
+test("Bahrain→Singapore with an account is USDC, not PayNow", () => {
+  const pick = cheapestRail("BH", "SG", true);
+  assert.equal(pick.type, "stable_bridge");
+  assert.doesNotMatch(pick.railName, /PayNow/i);
+});
+
+test("Bahrain claim payouts are Fawri+, not PayNow", () => {
+  const opts = payoutOptionsFor("BH");
+  assert.ok(opts.some((o) => /Fawri/i.test(o)));
+  assert.ok(!opts.some((o) => /PayNow/i.test(o)));
+});
+
+test("any leftover foreign rail remaps to a rail that exists in the new country", () => {
+  for (const c of COUNTRIES) {
+    for (const leftover of ["PayNow", "Zelle", "PromptPay"]) {
+      const next = alignRailsToCountry(
+        c.code,
+        [{ railType: leftover, alias: "x" }],
+        true,
+      );
+      const kept = canonicalizeRail(c.code, leftover);
+      assert.equal(next[0]?.railType, kept ?? primaryRail(c.code), c.code);
+      assert.equal(hasUsableAccount(c.code, next), true, c.code);
+    }
+  }
+});
+
+test("claim payouts never offer another country's exclusive rail", () => {
+  const owner = new Map<string, string>();
+  for (const c of COUNTRIES) {
+    for (const r of [...c.rails, ...c.wallets]) {
+      const k = r.toLowerCase();
+      if (!owner.has(k)) owner.set(k, c.code);
+      else if (owner.get(k) !== c.code) owner.set(k, "*");
+    }
+  }
+  for (const c of COUNTRIES) {
+    const opts = payoutOptionsFor(c.code);
+    for (const [rail, code] of owner) {
+      if (code === "*" || code === c.code) continue;
+      const offered = opts.some((o) => {
+        const lower = o.toLowerCase();
+        return (
+          lower === rail || lower.startsWith(`bank transfer via ${rail} (`)
+        );
+      });
+      assert.ok(!offered, `${c.code} payouts offer ${rail} (owned by ${code})`);
+    }
+  }
+});
+
+test("moving a traveler to Bahrain remaps a posted PayNow rail", () => {
+  const result = linkedAliasesFromUpdate(
+    {
+      country: "SG",
+      linkedRailAliases: [{ railType: "PayNow", alias: "+65alice" }],
+    },
+    { country: "BH", railType: "PayNow" },
+  );
+  assert.ok(!("error" in result));
+  assert.equal(result.linkedRailAliases?.[0]?.railType, "Fawri+");
 });

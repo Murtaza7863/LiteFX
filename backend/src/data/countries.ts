@@ -559,6 +559,77 @@ export function canonicalizeRail(
   return rails.find((r) => r.toLowerCase() === want) ?? null;
 }
 
+export type LinkedRailAlias = { railType: string; alias: string };
+
+/**
+ * Keep only rails that exist in `country`. If `remap` and none survive
+ * (e.g. PayNow after a move to Bahrain), attach the new country's primary rail
+ * so "has an account" still means has an account — not a leftover foreign rail.
+ */
+export function alignRailsToCountry(
+  country: string,
+  aliases: LinkedRailAlias[] | undefined,
+  remap = false,
+): LinkedRailAlias[] {
+  const list = Array.isArray(aliases) ? aliases : [];
+  const valid: LinkedRailAlias[] = [];
+  for (const a of list) {
+    if (!a || typeof a.railType !== "string") continue;
+    const rail = canonicalizeRail(country, a.railType);
+    if (rail) valid.push({ railType: rail, alias: a.alias ?? "" });
+  }
+  if (valid.length) return valid;
+  if (remap && list.length) {
+    return [{ railType: primaryRail(country), alias: list[0]?.alias ?? "" }];
+  }
+  return [];
+}
+
+export function hasUsableAccount(
+  country: string,
+  aliases: { railType: string }[] | undefined,
+): boolean {
+  return !!aliases?.some((a) => canonicalizeRail(country, a.railType));
+}
+
+/** Resolve linked rails for a traveler PATCH (country and/or railType). */
+export function linkedAliasesFromUpdate(
+  existing: { country: string; linkedRailAliases: LinkedRailAlias[] },
+  body: { country?: string; railType?: string | null; alias?: string },
+): { error: string } | { linkedRailAliases?: LinkedRailAlias[] } {
+  const nextCountry = body.country ?? existing.country;
+  const countryChanged =
+    body.country !== undefined && body.country !== existing.country;
+  if (body.railType !== undefined) {
+    if (body.railType == null || !String(body.railType).trim()) {
+      return { linkedRailAliases: [] };
+    }
+    let rail = canonicalizeRail(nextCountry, body.railType);
+    if (!rail) {
+      if (!countryChanged) return { error: "Unsupported settlement rail." };
+      rail = primaryRail(nextCountry);
+    }
+    return {
+      linkedRailAliases: [
+        {
+          railType: rail,
+          alias: body.alias || existing.linkedRailAliases[0]?.alias || "",
+        },
+      ],
+    };
+  }
+  if (countryChanged && existing.linkedRailAliases[0]) {
+    return {
+      linkedRailAliases: alignRailsToCountry(
+        nextCountry,
+        existing.linkedRailAliases,
+        true,
+      ),
+    };
+  }
+  return {};
+}
+
 /** Claim-link payout methods for a recipient's country. */
 export function payoutOptionsFor(country: string): string[] {
   const c = countryByCode(country);

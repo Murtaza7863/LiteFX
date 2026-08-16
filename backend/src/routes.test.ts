@@ -380,6 +380,17 @@ test("PATCH /entities/:id updates the traveler", async () => {
   assert.deepEqual(body.entity.linkedRailAliases, []);
 });
 
+test("PATCH /entities/:id remaps PayNow when the traveler moves to Bahrain", async () => {
+  asUser(() => seedStore());
+  const { status, body } = await json("/entities/ent-alice", {
+    method: "PATCH",
+    body: JSON.stringify({ country: "BH", railType: "PayNow" }),
+  });
+  assert.equal(status, 200, body.message);
+  assert.equal(body.entity.country, "BH");
+  assert.equal(body.entity.linkedRailAliases[0].railType, "Fawri+");
+});
+
 test("PATCH /entities/:id 404s for an unknown traveler", async () => {
   const { status, body } = await json("/entities/ent-missing", {
     method: "PATCH",
@@ -444,6 +455,7 @@ test("GET /claim/:token works without a session cookie", async () => {
   const { status, body } = await json(`/claim/${token}`, undefined, false);
   assert.equal(status, 200);
   assert.ok(body.recipient);
+  assert.ok(body.sender);
   assert.ok(Array.isArray(body.payoutOptions));
 });
 

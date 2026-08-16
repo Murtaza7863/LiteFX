@@ -19,7 +19,7 @@ import {
   corridorOptions,
   type RailPick,
 } from "../data/railOptions";
-import { primaryRail } from "../data/countries";
+import { primaryRail, hasUsableAccount } from "../data/countries";
 import { evaluateCompliance } from "./compliance";
 
 // ──────────────────────────────────────────────
@@ -45,7 +45,10 @@ export function routeObligation(ob: NetObligation): RoutingDecision | null {
   const sender = getEntity(ob.from);
   const recipient = getEntity(ob.to);
   if (!sender || !recipient) return null;
-  const hasAccount = recipient.linkedRailAliases.length > 0;
+  const hasAccount = hasUsableAccount(
+    recipient.country,
+    recipient.linkedRailAliases,
+  );
   const pick = cheapestRail(sender.country, recipient.country, hasAccount);
 
   let reason: string;
@@ -196,7 +199,7 @@ export function overrideRail(
   const cheapest = cheapestRail(
     sender.country,
     recipient.country,
-    recipient.linkedRailAliases.length > 0,
+    hasUsableAccount(recipient.country, recipient.linkedRailAliases),
   );
   const reason =
     pick.railName === cheapest.railName
@@ -212,7 +215,7 @@ export function overrideRail(
 export function linkRecipientAccount(entityId: string): Entity {
   const ent = getEntity(entityId);
   if (!ent) throw new Error("Traveler not found.");
-  if (ent.linkedRailAliases.length === 0) {
+  if (!hasUsableAccount(ent.country, ent.linkedRailAliases)) {
     const rail = primaryRail(ent.country);
     const alias = ent.contact.value || ent.id;
     const updated = updateEntity(entityId, {
@@ -228,11 +231,14 @@ export function linkRecipientAccount(entityId: string): Entity {
 
 function buildConsidered(
   sender: { country: string },
-  recipient: { country: string; linkedRailAliases: unknown[] },
+  recipient: { country: string; linkedRailAliases: { railType: string }[] },
   chosen: RailType,
   chosenName: string,
 ): RailConsideration[] {
-  const hasAccount = recipient.linkedRailAliases.length > 0;
+  const hasAccount = hasUsableAccount(
+    recipient.country,
+    recipient.linkedRailAliases,
+  );
   const list: RailConsideration[] = [
     {
       type: "claim_link",

@@ -12,6 +12,7 @@ import { FX_TABLE } from "../../../backend/src/types";
 import {
   canonicalizeRail,
   countryByCode,
+  linkedAliasesFromUpdate,
 } from "../../../backend/src/data/countries";
 import {
   classifyExpense,
@@ -29,7 +30,7 @@ import {
 import { buildSettlementPlan } from "../../../backend/src/agents/plan";
 import {
   claimWithPayoutMethod,
-  payoutOptionsFor,
+  getClaimDetails,
   settleObligation,
 } from "../../../backend/src/agents/claimLink";
 import {
@@ -47,7 +48,6 @@ import {
   duplicateTrip,
   findUserByEmail,
   findUserById,
-  getClaimLink,
   getStore,
   initStore,
   listContacts,
@@ -62,7 +62,6 @@ import {
   selectTrip,
   toPublicUser,
   travelerOnTrip,
-  updateClaimLink,
   updateEntity,
   updateExpense,
   validateExpenseSplit,
@@ -317,26 +316,9 @@ export const staticClient = {
   getClaim: async (token: string) => {
     await boot();
     const result = withClaimTrip(token, () => {
-      const link = getClaimLink(token);
-      if (!link) throw new Error("Claim link not found.");
-      if (link.status === "pending" && new Date(link.expiresAt) < new Date()) {
-        updateClaimLink(link.token, { status: "expired" });
-        link.status = "expired";
-      }
-      const store = getStore();
-      const recipient = store.entities.find((e) => e.id === link.recipientId);
-      const obligation = store.netObligations.find(
-        (o) => o.id === link.obligationId,
-      );
-      if (!recipient || !obligation) {
-        throw new Error("Claim link is no longer valid.");
-      }
-      return {
-        link,
-        recipient,
-        obligation,
-        payoutOptions: payoutOptionsFor(recipient.country),
-      } as ClaimDetails;
+      const details = getClaimDetails(token);
+      if (!details) throw new Error("Claim link not found.");
+      return details as ClaimDetails;
     });
     if (!result) throw new Error("Claim link not found.");
     return result;
@@ -458,35 +440,14 @@ export const staticClient = {
       if (body.contact !== undefined) {
         patch.contact = validContact(body.contact);
       }
-      if (body.railType !== undefined) {
-        const rail = canonicalizeRail(
-          body.country ?? existing.country,
-          body.railType,
-        );
-        if (body.railType?.trim() && !rail) {
-          throw new Error("Unsupported settlement rail.");
-        }
-        patch.linkedRailAliases = rail
-          ? [
-              {
-                railType: rail,
-                alias: body.alias || existing.linkedRailAliases[0]?.alias || "",
-              },
-            ]
-          : [];
-      } else if (body.country !== undefined && existing.linkedRailAliases[0]) {
-        const rail = canonicalizeRail(
-          body.country,
-          existing.linkedRailAliases[0].railType,
-        );
-        patch.linkedRailAliases = rail
-          ? [
-              {
-                railType: rail,
-                alias: existing.linkedRailAliases[0].alias,
-              },
-            ]
-          : [];
+      const rails = linkedAliasesFromUpdate(existing, {
+        country: body.country,
+        railType: body.railType,
+        alias: body.alias,
+      });
+      if ("error" in rails) throw new Error(rails.error);
+      if (rails.linkedRailAliases) {
+        patch.linkedRailAliases = rails.linkedRailAliases;
       }
       const updated = updateEntity(id, patch);
       if (!updated) throw new Error("Traveler not found.");
