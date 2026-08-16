@@ -32,7 +32,9 @@ export function Collapsible({
             <p className="text-slate-500 mt-0.5 truncate text-xs">{sub}</p>
           )}
         </div>
-        {badge && <div className="hidden shrink-0 sm:block">{badge}</div>}
+        {badge && (
+          <div className="max-w-[45%] shrink-0 overflow-hidden">{badge}</div>
+        )}
         <IconChevron
           className={`text-slate-500 h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
         />

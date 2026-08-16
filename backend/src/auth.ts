@@ -30,10 +30,12 @@ type AuthedRequest = Request & { user?: PublicUser };
 
 const loginFails = new Map<string, { n: number; until: number }>();
 const rateBuckets = new Map<string, number[]>();
+const pendingRegistrations = new Set<string>();
 
 export function resetAuthLimits(): void {
   loginFails.clear();
   rateBuckets.clear();
+  pendingRegistrations.clear();
 }
 
 export function clientIp(req: Request): string {
@@ -133,10 +135,15 @@ export function setSessionCookie(res: Response, token: string): void {
 }
 
 export function clearSessionCookie(res: Response): void {
-  res.append(
-    "Set-Cookie",
-    `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
-  );
+  const parts = [
+    `${SESSION_COOKIE}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0",
+  ];
+  if (process.env.NODE_ENV === "production") parts.push("Secure");
+  res.append("Set-Cookie", parts.join("; "));
 }
 
 export function readCookie(req: Request, name: string): string | undefined {
@@ -196,18 +203,29 @@ export async function registerUser(input: {
   if (emailErr) return { error: emailErr, status: 400 };
   const passErr = validatePassword(input.password);
   if (passErr) return { error: passErr, status: 400 };
-  if (findUserByEmail(email)) {
+  if (pendingRegistrations.has(email) || findUserByEmail(email)) {
     return { error: "An account with this email already exists.", status: 409 };
   }
-  const user: UserRecord = {
-    id: newId("usr"),
-    email,
-    name: input.name.replace(/[\u0000-\u001F\u007F]/g, "").trim(),
-    passwordHash: await hashPassword(input.password),
-    createdAt: new Date().toISOString(),
-  };
-  addUser(user);
-  return { user: toPublicUser(user) };
+  pendingRegistrations.add(email);
+  try {
+    const user: UserRecord = {
+      id: newId("usr"),
+      email,
+      name: input.name.replace(/[\u0000-\u001F\u007F]/g, "").trim(),
+      passwordHash: await hashPassword(input.password),
+      createdAt: new Date().toISOString(),
+    };
+    if (findUserByEmail(email)) {
+      return {
+        error: "An account with this email already exists.",
+        status: 409,
+      };
+    }
+    addUser(user);
+    return { user: toPublicUser(user) };
+  } finally {
+    pendingRegistrations.delete(email);
+  }
 }
 
 export async function authenticateUser(
@@ -243,6 +261,15 @@ export function authRateOk(req: Request): boolean {
   return allowRate(`auth:${clientIp(req)}`, AUTH_RATE_MAX, AUTH_RATE_WINDOW_MS);
 }
 
+export function claimRateOk(req: Request, token: string): boolean {
+  const tokenKey = hashToken(token).slice(0, 16);
+  return allowRate(
+    `claim:${clientIp(req)}:${tokenKey}`,
+    20,
+    AUTH_RATE_WINDOW_MS,
+  );
+}
+
 export function sessionMiddleware(
   req: Request,
   _res: Response,
@@ -259,6 +286,7 @@ export function sessionMiddleware(
 
 function isPublicApi(req: Request): boolean {
   const p = req.path;
+  if (p === "/health") return true;
   if (p.startsWith("/auth/")) return true;
   if (p.startsWith("/claim/")) return true;
   return false;
@@ -289,7 +317,10 @@ export function csrfOk(req: Request): boolean {
     return true;
   }
   const origin = req.headers.origin;
-  if (!origin) return true;
+  if (!origin) {
+    if (!readCookie(req, SESSION_COOKIE)) return true;
+    return req.headers["x-litefx-request"] === "1";
+  }
   try {
     const url = new URL(origin);
     const host = req.headers.host;

@@ -116,6 +116,7 @@ export function ScenarioOverview({
                 <button
                   type="button"
                   key={c.id}
+                  aria-pressed={on}
                   onClick={() =>
                     setCategoryFilter((cur) => (cur === c.id ? null : c.id))
                   }

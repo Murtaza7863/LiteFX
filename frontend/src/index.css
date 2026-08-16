@@ -49,6 +49,11 @@ body {
   min-height: 100vh;
 }
 
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
 .font-display {
   font-optical-sizing: auto;
   font-variation-settings: "SOFT" 30, "WONK" 0.25;
@@ -182,4 +187,15 @@ input[type="radio"] {
 
 .tnum {
   font-variant-numeric: tabular-nums lining-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

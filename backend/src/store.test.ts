@@ -7,12 +7,15 @@ import {
   deleteEntity,
   deleteExpense,
   getStore,
+  refreshDerivedForFx,
   seedStore,
   updateEntity,
   updateExpense,
 } from "./store.js";
 import { expense, loadTrip, traveler } from "./testUtil.js";
 import { runNetting } from "./agents/netting.js";
+import { runRouting } from "./agents/railRouter.js";
+import { settleObligation } from "./agents/claimLink.js";
 
 afterEach(() => {
   clearStore();
@@ -246,6 +249,47 @@ test("adding an expense after netting clears derived settlement state", () => {
   assert.equal(getStore().claimLinks.length, 0);
   assert.equal(getStore().ledger.length, 0);
   assert.equal(getStore().invoices.length, 0);
+});
+
+test("settlement ledger remains immutable when trip inputs change", () => {
+  seedStore();
+  runNetting();
+  runRouting();
+  const payable = getStore().netObligations.find(
+    (o) => o.chosenRail !== "claim_link",
+  );
+  assert.ok(payable);
+  assert.equal(settleObligation(payable.id).success, true);
+  assert.equal(getStore().ledger.length, 1);
+
+  addExpense(
+    expense({
+      id: "exp-after-settlement",
+      payerId: "ent-alice",
+      participantIds: ["ent-alice", "ent-bob"],
+      amount: 10,
+    }),
+  );
+  assert.equal(getStore().netObligations.length, 0);
+  assert.equal(getStore().ledger.length, 1);
+
+  runNetting();
+  assert.equal(getStore().ledger.length, 1);
+});
+
+test("FX snapshot change clears derived nets but keeps the ledger", () => {
+  seedStore();
+  runNetting();
+  runRouting();
+  const payable = getStore().netObligations.find(
+    (o) => o.chosenRail !== "claim_link",
+  );
+  assert.ok(payable);
+  assert.equal(settleObligation(payable.id).success, true);
+  getStore().fxAsOf = "stale-date";
+  refreshDerivedForFx();
+  assert.equal(getStore().netObligations.length, 0);
+  assert.equal(getStore().ledger.length, 1);
 });
 
 test("adding a traveler also wipes derived nets and invoices", () => {

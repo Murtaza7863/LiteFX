@@ -1,10 +1,8 @@
 import type {
   ClaimDetails,
-  ComplianceFlag,
   Entity,
   Expense,
   NettingResult,
-  ReconciliationResult,
   RoutingResult,
   ScenarioResponse,
   User,
@@ -28,8 +26,6 @@ import {
   rerouteUnsettled,
   runRouting,
 } from "../../../backend/src/agents/railRouter";
-import { runCompliance } from "../../../backend/src/agents/compliance";
-import { runReconciliation } from "../../../backend/src/agents/reconciliation";
 import { buildSettlementPlan } from "../../../backend/src/agents/plan";
 import {
   claimWithPayoutMethod,
@@ -49,6 +45,7 @@ import {
   getClaimLink,
   getStore,
   initStore,
+  refreshDerivedForFx,
   runAsUser,
   seedStore,
   toPublicUser,
@@ -60,7 +57,6 @@ import {
 } from "../../../backend/src/store";
 
 const SESSION_KEY = "litefx-web-user";
-const USERS_KEY = "litefx-web-pass";
 
 let booted = false;
 
@@ -68,12 +64,15 @@ async function boot(): Promise<void> {
   if (booted) return;
   booted = true;
   try {
+    localStorage.removeItem("litefx-web-pass");
     initStore();
   } catch {
     /* private mode / blocked storage */
   }
   // Never block first paint on a live FX fetch — static table is enough.
-  void refreshFx();
+  void refreshFx().then((updated) => {
+    if (updated) refreshDerivedForFx();
+  });
 }
 
 function sessionUser(): User | null {
@@ -89,23 +88,6 @@ function sessionUser(): User | null {
 function setSession(user: User | null): void {
   if (user) localStorage.setItem(SESSION_KEY, JSON.stringify(user));
   else localStorage.removeItem(SESSION_KEY);
-}
-
-function passwords(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) || "{}") as Record<
-      string,
-      string
-    >;
-  } catch {
-    return {};
-  }
-}
-
-function savePassword(email: string, password: string): void {
-  const map = passwords();
-  map[email.toLowerCase()] = password;
-  localStorage.setItem(USERS_KEY, JSON.stringify(map));
 }
 
 function newId(prefix: string): string {
@@ -189,6 +171,12 @@ function parseExpenseFields(
     throw new Error("Select at least one participant.");
   }
   const known = new Set(store.entities.map((e) => e.id));
+  if (
+    Array.isArray(body.participantIds) &&
+    body.participantIds.some((id) => !known.has(id))
+  ) {
+    throw new Error("Every participant must be a traveler on this trip.");
+  }
   let participants =
     Array.isArray(body.participantIds) && body.participantIds.length
       ? body.participantIds.filter((id) => known.has(id))
@@ -223,6 +211,39 @@ function parseExpenseFields(
   };
 }
 
+function validContact(contact?: { type: "email" | "phone"; value: string }): {
+  type: "email" | "phone";
+  value: string;
+} {
+  if (!contact) return { type: "email", value: "" };
+  const value = (contact.value ?? "").trim();
+  if (value.length > 254) throw new Error("Contact is too long.");
+  if (
+    value &&
+    contact.type === "email" &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+  ) {
+    throw new Error("Enter a valid contact email.");
+  }
+  if (value && contact.type === "phone") {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length < 7 || digits.length > 15) {
+      throw new Error("Enter a valid contact phone number.");
+    }
+  }
+  return { type: contact.type, value };
+}
+
+function assertCanNet(): void {
+  const store = getStore();
+  if (store.debtEdges.length === 0) {
+    throw new Error("Add a shared expense before running the engine.");
+  }
+  if (store.netObligations.length > 0) {
+    throw new Error("This trip is already netted.");
+  }
+}
+
 export const staticClient = {
   getScenario: async () => {
     await boot();
@@ -230,11 +251,15 @@ export const staticClient = {
   },
   runNetting: async () => {
     await boot();
-    return asUser(() => runNetting() as NettingResult);
+    return asUser(() => {
+      assertCanNet();
+      return runNetting() as NettingResult;
+    });
   },
   runEngine: async () => {
     await boot();
     return asUser(() => {
+      assertCanNet();
       const netting = runNetting();
       const obligations = runRouting();
       return {
@@ -252,17 +277,6 @@ export const staticClient = {
         obligations,
         railTypesExercised: getRailTypesExercised(),
       } as RoutingResult;
-    });
-  },
-  runCompliance: async () => {
-    await boot();
-    return asUser(() => ({ flags: runCompliance() as ComplianceFlag[] }));
-  },
-  runReconciliation: async () => {
-    await boot();
-    return asUser(() => {
-      const results = runReconciliation() as ReconciliationResult[];
-      return { results, vendorSummary: getStore().vendorSummary };
     });
   },
   settle: async (id: string) => {
@@ -349,11 +363,14 @@ export const staticClient = {
         throw new Error("Unsupported country.");
       }
       const rail = canonicalizeRail(body.country, body.railType);
+      if (body.railType?.trim() && !rail) {
+        throw new Error("Unsupported settlement rail.");
+      }
       const entity: Entity = {
         id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
         name,
         country: body.country,
-        contact: body.contact ?? { type: "email" as const, value: "" },
+        contact: validContact(body.contact),
         linkedRailAliases: rail
           ? [{ railType: rail, alias: body.alias || "" }]
           : [],
@@ -402,16 +419,16 @@ export const staticClient = {
       }
       if (body.country !== undefined) patch.country = body.country;
       if (body.contact !== undefined) {
-        patch.contact = {
-          type: body.contact.type === "phone" ? "phone" : "email",
-          value: body.contact.value ?? "",
-        };
+        patch.contact = validContact(body.contact);
       }
       if (body.railType !== undefined) {
         const rail = canonicalizeRail(
           body.country ?? existing.country,
           body.railType,
         );
+        if (body.railType?.trim() && !rail) {
+          throw new Error("Unsupported settlement rail.");
+        }
         patch.linkedRailAliases = rail
           ? [
               {
@@ -474,58 +491,25 @@ export const staticClient = {
     }
     return user;
   },
-  signup: async (body: { name: string; email: string; password: string }) => {
-    await boot();
-    const name = body.name.trim();
-    const email = body.email.trim().toLowerCase();
-    if (name.length < 1 || name.length > 80) {
-      throw new Error("Name must be 1–80 characters.");
-    }
-    if (!email.includes("@")) throw new Error("Enter a valid email.");
-    if (
-      (body.password ?? "").length < 10 ||
-      !/[A-Za-z]/.test(body.password) ||
-      !/\d/.test(body.password)
-    ) {
-      throw new Error("Use 10–200 characters with a letter and a number.");
-    }
-    if (findUserByEmail(email)) {
-      throw new Error("An account with this email already exists.");
-    }
-    const record: UserRecord = {
-      id: newId("usr"),
-      email,
-      name,
-      passwordHash: "web",
-      createdAt: new Date().toISOString(),
-    };
-    addUser(record);
-    savePassword(email, body.password);
-    const user = toPublicUser(record);
-    setSession(user);
-    return user;
+  signup: async (_body: { name: string; email: string; password: string }) => {
+    throw new Error("Accounts are available on the server deployment.");
   },
-  login: async (body: { email: string; password: string }) => {
-    await boot();
-    const email = body.email.trim().toLowerCase();
-    const record = findUserByEmail(email);
-    if (!record || passwords()[email] !== body.password) {
-      throw new Error("Invalid email or password.");
-    }
-    const user = toPublicUser(record);
-    setSession(user);
-    return user;
+  login: async (_body: { email: string; password: string }) => {
+    throw new Error("Accounts are available on the server deployment.");
   },
   demo: async () => {
     await boot();
-    const record: UserRecord = {
-      id: newId("usr"),
-      email: `${newId("demo")}@litefx.local`,
-      name: "Demo traveler",
-      passwordHash: "web",
-      createdAt: new Date().toISOString(),
-    };
-    addUser(record);
+    const email = "demo@litefx.local";
+    const record =
+      findUserByEmail(email) ??
+      ({
+        id: "usr-demo",
+        email,
+        name: "Demo traveler",
+        passwordHash: "static-demo",
+        createdAt: new Date().toISOString(),
+      } satisfies UserRecord);
+    if (!findUserByEmail(email)) addUser(record);
     const user = toPublicUser(record);
     setSession(user);
     return user;

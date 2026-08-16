@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import type { User } from "../api/client";
 
-import { client } from "../api/client";
+import { client, isStaticEngine } from "../api/client";
 import { LogoMark, Wordmark } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -60,8 +60,11 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
           </h1>
           <p className="mt-2.5 text-[15px] leading-7 text-[var(--muted)]">
             Nets messy IOUs into the fewest transfers, then picks a rail for
-            each corridor. This sandbox stays on this device — no real money
-            moves.
+            each corridor.{" "}
+            {isStaticEngine
+              ? "This browser demo stays on this device"
+              : "Your trip is saved to your account"}{" "}
+            — no real money moves.
           </p>
           {error && <p className="mt-4 text-sm text-[#c48878]">{error}</p>}
           <button
@@ -72,7 +75,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
           >
             {busy ? "Opening…" : "Open the sample trip"}
           </button>
-          {mode === "hidden" ? (
+          {!isStaticEngine && mode === "hidden" ? (
             <p className="mt-5 text-center text-sm text-[var(--muted)]">
               Have an account on this device?{" "}
               <button
@@ -86,7 +89,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
                 Sign in
               </button>
             </p>
-          ) : (
+          ) : !isStaticEngine ? (
             <form
               className="mt-6 space-y-3"
               onSubmit={(e) => {
@@ -155,7 +158,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
                 </button>
               </p>
             </form>
-          )}
+          ) : null}
         </div>
       </main>
     </div>

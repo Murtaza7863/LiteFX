@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { ClaimDetails } from "../api/client";
 
-import { client } from "../api/client";
+import { client, isStaticEngine } from "../api/client";
 import { claimUrl } from "../lib/urls";
 import { Avatar } from "./Avatar";
 import {
@@ -49,8 +49,11 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
   const [claimed, setClaimed] = useState(false);
 
   const [copied, setCopied] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
     client
       .getClaim(token)
       .then((d) => {
@@ -61,6 +64,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
         setError(e.message);
         setLoading(false);
       });
+    return () => previous?.focus();
   }, [token]);
 
   useEffect(() => {
@@ -99,8 +103,13 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
       <div
         className="glass-strong animate-scale-in relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl p-6"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="claim-title"
       >
         <button
+          ref={closeRef}
+          type="button"
           onClick={onClose}
           className="text-slate-500 hover:text-slate-200 hover:bg-white/[0.06] absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full transition-colors"
           aria-label="Close"
@@ -126,7 +135,8 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
             <div className="mt-2 mb-5">
               <div className="mb-2 flex items-center gap-2">
                 <span className="chip border border-[#c4a574]/30 bg-[#c4a574]/10 text-[#c4a574]">
-                  <IconTicket className="h-3.5 w-3.5" /> Claim Link
+                  <IconTicket className="h-3.5 w-3.5" />{" "}
+                  {isStaticEngine ? "Recipient preview" : "Claim link"}
                 </span>
                 <span
                   className={`chip border ${
@@ -140,7 +150,10 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                   {details.link.status}
                 </span>
               </div>
-              <h2 className="text-slate-50 text-2xl font-bold tracking-tight">
+              <h2
+                id="claim-title"
+                className="text-slate-50 text-2xl font-bold tracking-tight"
+              >
                 You've been paid
               </h2>
               <div className="mt-2 flex items-center gap-2">
@@ -178,42 +191,49 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
               </p>
             </div>
 
-            {/* Real, shareable claim URL */}
-            <div className="bg-white/[0.03] border-white/[0.05] mb-3 flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
-              <span className="text-slate-500 truncate font-mono text-[11px]">
-                {claimUrl(token)}
-              </span>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = claimUrl(token);
-                    void navigator.clipboard.writeText(url).then(
-                      () => {
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 1600);
-                      },
-                      () => setCopied(false),
-                    );
-                  }}
-                  className="text-slate-400 hover:text-slate-200 text-[11px] font-medium"
-                >
-                  {copied ? "Copied" : "Copy"}
-                </button>
-                <a
-                  href={claimUrl(token)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="link-plain text-[11px] font-medium whitespace-nowrap"
-                >
-                  Open ↗
-                </a>
-              </div>
-            </div>
-
-            {details.link.status !== "claimed" &&
-              details.link.status !== "expired" &&
-              !claimed && <ClaimSendRow details={details} token={token} />}
+            {isStaticEngine ? (
+              <p className="text-slate-500 mb-4 rounded-lg border border-[var(--border)] px-3 py-2 text-[11px] leading-relaxed">
+                Browser demo: this previews the recipient experience on this
+                device. Deploy the server version for cross-device claim links.
+              </p>
+            ) : (
+              <>
+                <div className="bg-white/[0.03] border-white/[0.05] mb-3 flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                  <span className="text-slate-500 truncate font-mono text-[11px]">
+                    {claimUrl(token)}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = claimUrl(token);
+                        void navigator.clipboard.writeText(url).then(
+                          () => {
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 1600);
+                          },
+                          () => setCopied(false),
+                        );
+                      }}
+                      className="text-slate-400 hover:text-slate-200 text-[11px] font-medium"
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                    <a
+                      href={claimUrl(token)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="link-plain text-[11px] font-medium whitespace-nowrap"
+                    >
+                      Open ↗
+                    </a>
+                  </div>
+                </div>
+                {details.link.status !== "claimed" &&
+                  details.link.status !== "expired" &&
+                  !claimed && <ClaimSendRow details={details} token={token} />}
+              </>
+            )}
 
             {claimed ? (
               <div className="animate-scale-in rounded-xl border border-[var(--border)] p-5 text-center">
@@ -324,26 +344,37 @@ function ClaimSendRow({
 
   return (
     <div className="mb-5 flex flex-wrap gap-2">
-      <a
-        href={`mailto:${emailTo}?subject=${subject}&body=${encoded}`}
-        className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
-      >
-        Email
-      </a>
-      <a
-        href={`sms:${phoneDigits ? `+${phoneDigits}` : ""}?&body=${encoded}`}
-        className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
-      >
-        SMS
-      </a>
-      <a
-        href={`https://wa.me/${phoneDigits}?text=${encoded}`}
-        target="_blank"
-        rel="noreferrer"
-        className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
-      >
-        WhatsApp
-      </a>
+      {emailTo && (
+        <a
+          href={`mailto:${emailTo}?subject=${subject}&body=${encoded}`}
+          className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
+        >
+          Email
+        </a>
+      )}
+      {phoneDigits && (
+        <>
+          <a
+            href={`sms:+${phoneDigits}?&body=${encoded}`}
+            className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
+          >
+            SMS
+          </a>
+          <a
+            href={`https://wa.me/${phoneDigits}?text=${encoded}`}
+            target="_blank"
+            rel="noreferrer"
+            className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
+          >
+            WhatsApp
+          </a>
+        </>
+      )}
+      {!emailTo && !phoneDigits && (
+        <span className="text-slate-500 text-[11px]">
+          Add a valid email or phone number to share this link.
+        </span>
+      )}
     </div>
   );
 }

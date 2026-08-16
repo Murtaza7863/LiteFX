@@ -13,19 +13,36 @@ export function SettlementLog({
       {ledger.map((l) => (
         <div
           key={l.id}
-          className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2.5 text-[13px] sm:grid-cols-[1fr_auto_auto_auto]"
+          className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2.5 text-[13px] sm:grid-cols-[1fr_auto_auto]"
         >
-          <span className="text-slate-300 min-w-0 truncate">
-            {entityName(l.from)} → {entityName(l.to)}
-          </span>
-          <span className="text-slate-500 hidden text-xs capitalize sm:inline">
-            {l.rail.replace("_", " ")}
-          </span>
-          <span className="text-slate-200 tnum font-mono">
-            ${l.amountUsd.toFixed(2)}
-          </span>
+          <div className="min-w-0">
+            <p className="text-slate-300 truncate">
+              {entityName(l.from)} → {entityName(l.to)}
+            </p>
+            <p className="text-slate-500 mt-0.5 text-[10px]">
+              <span className="capitalize">{l.rail.replace("_", " ")}</span>
+              {" · "}
+              {new Date(l.timestamp).toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-slate-200 tnum font-mono">
+              {l.amount.toLocaleString(undefined, {
+                maximumFractionDigits: 2,
+              })}{" "}
+              {l.currency}
+            </p>
+            <p className="text-slate-500 tnum font-mono text-[10px]">
+              ${l.amountUsd.toFixed(2)} USD
+            </p>
+          </div>
           <span
-            className={`chip justify-self-end border ${
+            className={`chip col-span-2 justify-self-end border sm:col-span-1 ${
               l.status === "claimed"
                 ? "border-[#9aaa8c]/25 bg-[#9aaa8c]/15 text-[#9aaa8c]"
                 : "bg-white/[0.06] border-white/[0.1] text-slate-300"

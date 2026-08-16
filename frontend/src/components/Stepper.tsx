@@ -24,7 +24,7 @@ export function Stepper({ steps, busy = false }: Props) {
           const available = step.state === "available";
           const isLoading = step.state === "loading";
           const locked = step.state === "locked";
-          const clickable = !locked && !isLoading && !busy;
+          const clickable = !done && !locked && !isLoading && !busy;
           const enabled = active || available;
 
           return (

@@ -138,9 +138,14 @@ export function DebtGraph({
                     )}
                     {meta && (
                       <span
-                        className={`chip hidden shrink-0 border !px-1.5 !py-0 !text-[10px] sm:inline-flex ${meta.soft} ${meta.text}`}
+                        className={`chip inline-flex shrink-0 border !px-1.5 !py-0 !text-[9px] sm:!text-[10px] ${meta.soft} ${meta.text}`}
                       >
-                        {meta.label}
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${meta.dot}`}
+                        />
+                        <span className="hidden min-[420px]:inline">
+                          {meta.label}
+                        </span>
                       </span>
                     )}
                   </>

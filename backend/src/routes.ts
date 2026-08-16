@@ -17,6 +17,7 @@ import {
   addUser,
   toPublicUser,
   deleteSessionByTokenHash,
+  persistenceStatus,
 } from "./store";
 import { FX_TABLE } from "./types";
 import type { Expense } from "./types";
@@ -31,8 +32,6 @@ import {
   runRouting,
   getRailTypesExercised,
 } from "./agents/railRouter";
-import { runCompliance } from "./agents/compliance";
-import { runReconciliation } from "./agents/reconciliation";
 import { buildSettlementPlan } from "./agents/plan";
 import {
   settleObligation,
@@ -55,9 +54,20 @@ import {
   readCookie,
   SESSION_COOKIE,
   hashToken,
+  validateName,
+  claimRateOk,
 } from "./auth";
 
 export const apiRouter = Router();
+
+apiRouter.get("/health", (_req, res) => {
+  const persistence = persistenceStatus();
+  res.status(persistence.healthy ? 200 : 503).json({
+    ok: persistence.healthy,
+    service: "litefx",
+    persistence: persistence.mode,
+  });
+});
 
 apiRouter.use(sessionMiddleware);
 apiRouter.use(csrfGuard);
@@ -127,6 +137,13 @@ apiRouter.get("/auth/me", (req, res) => {
 });
 
 apiRouter.post("/auth/demo", async (req, res) => {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ENABLE_DEMO_AUTH !== "true"
+  ) {
+    res.status(404).json({ success: false, message: "Demo mode is disabled." });
+    return;
+  }
   if (!authRateOk(req)) {
     res.status(429).json({
       success: false,
@@ -162,6 +179,30 @@ type ExpenseBody = {
   };
 };
 
+type ContactInput = { type: string; value: string };
+
+function parseContact(
+  contact: ContactInput | undefined,
+): { type: "email" | "phone"; value: string } | { error: string } {
+  if (!contact) return { type: "email", value: "" };
+  if (contact.type !== "email" && contact.type !== "phone") {
+    return { error: "Contact type must be email or phone." };
+  }
+  const value = (contact.value ?? "").trim();
+  if (value.length > 254) return { error: "Contact is too long." };
+  if (!value) return { type: contact.type, value: "" };
+  if (contact.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    return { error: "Enter a valid contact email." };
+  }
+  if (contact.type === "phone") {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length < 7 || digits.length > 15) {
+      return { error: "Enter a valid contact phone number." };
+    }
+  }
+  return { type: contact.type, value };
+}
+
 function parseExpenseFields(
   body: ExpenseBody,
   existing?: Expense,
@@ -189,6 +230,12 @@ function parseExpenseFields(
     return { error: "Select at least one participant." };
   }
   const known = new Set(store.entities.map((e) => e.id));
+  if (
+    Array.isArray(body.participantIds) &&
+    body.participantIds.some((id) => !known.has(id))
+  ) {
+    return { error: "Every participant must be a traveler on this trip." };
+  }
   let participants =
     Array.isArray(body.participantIds) && body.participantIds.length
       ? body.participantIds.filter((id) => known.has(id))
@@ -271,10 +318,9 @@ apiRouter.post("/entities", (req, res) => {
       .json({ success: false, message: "name and country are required." });
     return;
   }
-  if (name.length > 80) {
-    res
-      .status(400)
-      .json({ success: false, message: "Name must be 1–80 characters." });
+  const nameError = validateName(name);
+  if (nameError) {
+    res.status(400).json({ success: false, message: nameError });
     return;
   }
   if (!countryByCode(country)) {
@@ -282,14 +328,22 @@ apiRouter.post("/entities", (req, res) => {
     return;
   }
   const rail = canonicalizeRail(country, railType);
+  if (railType?.trim() && !rail) {
+    res
+      .status(400)
+      .json({ success: false, message: "Unsupported settlement rail." });
+    return;
+  }
+  const parsedContact = parseContact(contact);
+  if ("error" in parsedContact) {
+    res.status(400).json({ success: false, message: parsedContact.error });
+    return;
+  }
   const entity = {
     id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
     name,
     country,
-    contact: (contact ?? { type: "email", value: "" }) as {
-      type: "email" | "phone";
-      value: string;
-    },
+    contact: parsedContact,
     linkedRailAliases: rail ? [{ railType: rail, alias: alias || "" }] : [],
   };
   addEntity(entity);
@@ -317,23 +371,30 @@ apiRouter.patch("/entities/:id", (req, res) => {
   const patch: Parameters<typeof updateEntity>[1] = {};
   if (name !== undefined) {
     const trimmed = name.trim();
-    if (!trimmed || trimmed.length > 80) {
-      res
-        .status(400)
-        .json({ success: false, message: "Name must be 1–80 characters." });
+    const nameError = validateName(trimmed);
+    if (nameError) {
+      res.status(400).json({ success: false, message: nameError });
       return;
     }
     patch.name = trimmed;
   }
   if (country !== undefined) patch.country = country;
   if (contact !== undefined) {
-    patch.contact = {
-      type: contact.type === "phone" ? "phone" : "email",
-      value: contact.value ?? "",
-    };
+    const parsedContact = parseContact(contact);
+    if ("error" in parsedContact) {
+      res.status(400).json({ success: false, message: parsedContact.error });
+      return;
+    }
+    patch.contact = parsedContact;
   }
   if (railType !== undefined) {
     const rail = canonicalizeRail(country ?? existing.country, railType);
+    if (railType?.trim() && !rail) {
+      res
+        .status(400)
+        .json({ success: false, message: "Unsupported settlement rail." });
+      return;
+    }
     patch.linkedRailAliases = rail
       ? [
           {
@@ -404,17 +465,39 @@ apiRouter.patch("/expenses/:id", (req, res) => {
 // ── DELETE /api/expenses/:id — remove an expense ──
 apiRouter.delete("/expenses/:id", (req, res) => {
   const ok = deleteExpense(req.params.id);
-  res.json({ success: ok });
+  if (!ok) {
+    res.status(404).json({ success: false, message: "Expense not found." });
+    return;
+  }
+  res.json({ success: true });
 });
 
 // ── DELETE /api/entities/:id — remove a traveler (bills they paid, their share of others) ──
 apiRouter.delete("/entities/:id", (req, res) => {
   const ok = deleteEntity(req.params.id);
-  res.json({ success: ok });
+  if (!ok) {
+    res.status(404).json({ success: false, message: "Traveler not found." });
+    return;
+  }
+  res.json({ success: true });
 });
 
 // ── POST /api/netting/run — run the netting agent ──
 apiRouter.post("/netting/run", (_req, res) => {
+  if (getStore().debtEdges.length === 0) {
+    res.status(400).json({
+      success: false,
+      message: "Add a shared expense before running netting.",
+    });
+    return;
+  }
+  if (getStore().netObligations.length > 0) {
+    res.status(409).json({
+      success: false,
+      message: "This trip is already netted.",
+    });
+    return;
+  }
   const result = runNetting();
   res.json(result);
 });
@@ -428,6 +511,20 @@ apiRouter.post("/routing/run", (_req, res) => {
 
 // ── POST /api/engine/run — net + route in one shot (hackathon demo path) ──
 apiRouter.post("/engine/run", (_req, res) => {
+  if (getStore().debtEdges.length === 0) {
+    res.status(400).json({
+      success: false,
+      message: "Add a shared expense before running the engine.",
+    });
+    return;
+  }
+  if (getStore().netObligations.length > 0) {
+    res.status(409).json({
+      success: false,
+      message: "This trip is already netted.",
+    });
+    return;
+  }
   const netting = runNetting();
   const obligations = runRouting();
   res.json({
@@ -470,21 +567,18 @@ apiRouter.post("/entities/:id/link-account", (req, res) => {
   }
 });
 
-// ── POST /api/compliance/run — run compliance checks ──
-apiRouter.post("/compliance/run", (_req, res) => {
-  const flags = runCompliance();
-  res.json({ flags });
-});
-
-// ── POST /api/reconciliation/run — run reconciliation ──
-apiRouter.post("/reconciliation/run", (_req, res) => {
-  const results = runReconciliation();
-  res.json({ results, vendorSummary: getStore().vendorSummary });
-});
-
 // ── POST /api/settlement/:id/settle — mock-settle an obligation ──
 apiRouter.post("/settlement/:id/settle", (req, res) => {
   const result = settleObligation(req.params.id);
+  if (!result.success) {
+    const status = /not found/i.test(result.message)
+      ? 404
+      : /already settled/i.test(result.message)
+        ? 409
+        : 400;
+    res.status(status).json(result);
+    return;
+  }
   res.json(result);
 });
 
@@ -524,6 +618,13 @@ apiRouter.get("/claim/:token", (req, res) => {
 
 // ── POST /api/claim/:token/claim — claim with a payout method ──
 apiRouter.post("/claim/:token/claim", (req, res) => {
+  if (!claimRateOk(req, req.params.token)) {
+    res.status(429).json({
+      success: false,
+      message: "Too many claim attempts. Try again in a few minutes.",
+    });
+    return;
+  }
   const { payoutMethod } = req.body as { payoutMethod?: string };
   if (!payoutMethod) {
     res
@@ -532,11 +633,22 @@ apiRouter.post("/claim/:token/claim", (req, res) => {
     return;
   }
   const owner = findClaimOwner(req.params.token);
-  const result = owner
-    ? runAsUser(owner, () =>
-        claimWithPayoutMethod(req.params.token, payoutMethod),
-      )
-    : claimWithPayoutMethod(req.params.token, payoutMethod);
+  if (!owner) {
+    res.status(404).json({ success: false, message: "Claim link not found." });
+    return;
+  }
+  const result = runAsUser(owner, () =>
+    claimWithPayoutMethod(req.params.token, payoutMethod),
+  );
+  if (!result.success) {
+    const status = /not found|no longer valid/i.test(result.message)
+      ? 404
+      : /already|expired/i.test(result.message)
+        ? 409
+        : 400;
+    res.status(status).json(result);
+    return;
+  }
   res.json(result);
 });
 

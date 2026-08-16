@@ -65,10 +65,10 @@ test("Indonesia→Singapore uses the QRIS ↔ PayNow linked rail", () => {
   assert.equal(pick.railName, LINKED_CORRIDORS["ID-SG"]);
 });
 
-test("canonicalizeRail maps aliases onto the country's list", () => {
+test("canonicalizeRail maps valid names and rejects unknown rails", () => {
   assert.equal(canonicalizeRail("US", "zelle"), "Zelle");
   assert.equal(canonicalizeRail("SG", "paynow"), "PayNow");
-  assert.equal(canonicalizeRail("TH", "garbage"), "PromptPay");
+  assert.equal(canonicalizeRail("TH", "garbage"), null);
   assert.equal(canonicalizeRail("US", null), null);
 });
 

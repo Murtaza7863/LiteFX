@@ -80,7 +80,13 @@ export function claimWithPayoutMethod(
   }
 
   const recipient = getEntity(link.recipientId);
-  if (!recipient || !getNetObligation(link.obligationId)) {
+  const obligation = getNetObligation(link.obligationId);
+  if (
+    !recipient ||
+    !obligation ||
+    obligation.chosenRail !== "claim_link" ||
+    obligation.status === "settled"
+  ) {
     return { success: false, message: "Claim link is no longer valid." };
   }
   if (!payoutOptionsFor(recipient.country).includes(payoutMethod)) {
@@ -89,11 +95,8 @@ export function claimWithPayoutMethod(
 
   updateClaimLink(token, { status: "claimed", payoutMethod });
 
-  const claimedOb = getNetObligation(link.obligationId);
-  if (claimedOb && claimedOb.status !== "settled") {
-    updateNetObligation(link.obligationId, { status: "settled" });
-    recordLedger(claimedOb, "claimed");
-  }
+  updateNetObligation(link.obligationId, { status: "settled" });
+  recordLedger(obligation, "claimed");
 
   return {
     success: true,

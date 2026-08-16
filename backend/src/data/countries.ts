@@ -556,7 +556,7 @@ export function canonicalizeRail(
   if (rail == null || String(rail).trim() === "") return null;
   const rails = railsFor(country);
   const want = String(rail).trim().toLowerCase();
-  return rails.find((r) => r.toLowerCase() === want) ?? rails[0] ?? null;
+  return rails.find((r) => r.toLowerCase() === want) ?? null;
 }
 
 /** Claim-link payout methods for a recipient's country. */

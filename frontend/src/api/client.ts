@@ -201,7 +201,11 @@ async function api<T>(
   const res = await fetch(`/api${path}`, {
     method,
     credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: body
+      ? { "Content-Type": "application/json", "X-LiteFX-Request": "1" }
+      : method !== "GET"
+        ? { "X-LiteFX-Request": "1" }
+        : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401 && !opts?.skipAuthEvent) {
@@ -226,13 +230,6 @@ export const httpClient = {
   runNetting: () => api<NettingResult>("/netting/run", "POST"),
   runEngine: () => api<NettingResult & RoutingResult>("/engine/run", "POST"),
   runRouting: () => api<RoutingResult>("/routing/run", "POST"),
-  runCompliance: () =>
-    api<{ flags: ComplianceFlag[] }>("/compliance/run", "POST"),
-  runReconciliation: () =>
-    api<{ results: ReconciliationResult[]; vendorSummary: any[] }>(
-      "/reconciliation/run",
-      "POST",
-    ),
   settle: (id: string) =>
     api<{ success: boolean; message: string; link?: ClaimLink }>(
       `/settlement/${id}/settle`,

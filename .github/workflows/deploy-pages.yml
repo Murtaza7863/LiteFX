@@ -15,38 +15,55 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Backend tests
+        run: npm test -w backend
+      - name: Frontend tests
+        run: npm test -w frontend
+      - name: Server build
+        run: npm run build
+      - name: Static Pages build
+        env:
+          BASE_PATH: /LiteFX/
+          VITE_STATIC: "1"
+        run: npm run build -w frontend
+
   deploy:
+    needs: verify
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-
       - name: Install dependencies
         run: npm ci
-
       - name: Build static app
         env:
           BASE_PATH: /LiteFX/
           VITE_STATIC: "1"
         run: npm run build -w frontend
-
       - name: SPA fallback
         run: |
           cp frontend/dist/index.html frontend/dist/404.html
           touch frontend/dist/.nojekyll
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: frontend/dist
-
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

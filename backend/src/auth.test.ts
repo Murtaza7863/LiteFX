@@ -37,6 +37,7 @@ async function json(path: string, init?: RequestInit & { cookie?: string }) {
     ...init,
     headers: {
       "content-type": "application/json",
+      "x-litefx-request": "1",
       ...(init?.cookie ? { cookie: init.cookie } : {}),
       ...(init?.headers ?? {}),
     },
@@ -79,6 +80,24 @@ test("signup then login returns a session cookie", async () => {
   const me = await json("/auth/me", { cookie: created.cookie });
   assert.equal(me.status, 200);
   assert.equal(me.body.user.name, "Ada Lovelace");
+});
+
+test("concurrent signups for the same email only create one user", async () => {
+  const body = JSON.stringify({
+    name: "Ada",
+    email: "race@x.test",
+    password: "correcthorse1",
+  });
+  const [a, b] = await Promise.all([
+    json("/auth/signup", { method: "POST", body }),
+    json("/auth/signup", { method: "POST", body }),
+  ]);
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+  assert.equal(
+    getApp().users.filter((u) => u.email === "race@x.test").length,
+    1,
+  );
 });
 
 test("duplicate signup is rejected", async () => {

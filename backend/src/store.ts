@@ -22,6 +22,7 @@ import type {
   VendorSummaryRow,
 } from "./types.js";
 import { toUsd } from "./types.js";
+import { getFxSnapshot } from "./fx.js";
 import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
 
 // ──────────────────────────────────────────────
@@ -56,6 +57,7 @@ export interface StoreState {
   complianceRan: boolean;
   reconciliationRan: boolean;
   vendorSummary: VendorSummaryRow[];
+  fxAsOf: string | null;
 }
 
 export interface UserRecord {
@@ -80,11 +82,15 @@ export interface PublicUser {
   name: string;
 }
 
-interface AppState {
+export interface AppState {
   version: 2;
   users: UserRecord[];
   sessions: SessionRecord[];
   trips: Record<string, StoreState>;
+}
+
+interface PersistenceAdapter {
+  save(state: AppState): Promise<void>;
 }
 
 function deriveDebtEdges(expenses: Expense[]): DebtEdge[] {
@@ -200,6 +206,7 @@ function freshState(): StoreState {
     complianceRan: false,
     reconciliationRan: false,
     vendorSummary: [],
+    fxAsOf: getFxSnapshot().asOf,
   };
 }
 
@@ -215,6 +222,8 @@ function sampleState(): StoreState {
 }
 
 let app: AppState | null = null;
+let persistence: PersistenceAdapter | null = null;
+let persistenceError: string | null = null;
 
 function emptyApp(): AppState {
   return { version: 2, users: [], sessions: [], trips: {} };
@@ -232,6 +241,21 @@ function ensureTrip(uid: string): StoreState {
 
 function save(): void {
   if (!app) return;
+  if (persistence) {
+    void persistence
+      .save(structuredClone(app))
+      .then(() => {
+        persistenceError = null;
+      })
+      .catch((e) => {
+        persistenceError = (e as Error).message;
+        console.error(
+          "[store] PostgreSQL persistence failed:",
+          persistenceError,
+        );
+      });
+    return;
+  }
   try {
     const file = dbFile();
     const dir = path.dirname(file);
@@ -244,6 +268,18 @@ function save(): void {
   } catch (e) {
     console.warn("[store] failed to persist:", (e as Error).message);
   }
+}
+
+export function persistenceStatus(): {
+  mode: "postgres" | "json";
+  healthy: boolean;
+  error: string | null;
+} {
+  return {
+    mode: persistence ? "postgres" : "json",
+    healthy: persistenceError === null,
+    error: persistenceError,
+  };
 }
 
 function coerceTrip(parsed: Partial<StoreState>): StoreState {
@@ -264,6 +300,7 @@ function coerceTrip(parsed: Partial<StoreState>): StoreState {
     complianceRan: !!parsed.complianceRan,
     reconciliationRan: !!parsed.reconciliationRan,
     vendorSummary: parsed.vendorSummary ?? [],
+    fxAsOf: getFxSnapshot().asOf,
   };
   const repriced = deriveDebtEdges(merged.expenses);
   const oldSum = (parsed.debtEdges ?? []).reduce(
@@ -272,11 +309,11 @@ function coerceTrip(parsed: Partial<StoreState>): StoreState {
   );
   const newSum = repriced.reduce((s, e) => s + e.amountUsd, 0);
   merged.debtEdges = repriced;
-  if (Math.abs(oldSum - newSum) > 0.05) {
+  const fxChanged = parsed.fxAsOf !== merged.fxAsOf;
+  if (fxChanged || Math.abs(oldSum - newSum) > 0.005) {
     merged.netObligations = [];
     merged.nettingSummary = null;
     merged.claimLinks = [];
-    merged.ledger = [];
     merged.complianceFlags = [];
     merged.complianceRan = false;
     merged.reconciliationResults = [];
@@ -284,6 +321,27 @@ function coerceTrip(parsed: Partial<StoreState>): StoreState {
     merged.vendorSummary = [];
   }
   return merged;
+}
+
+export function refreshDerivedForFx(): void {
+  initStore();
+  const asOf = getFxSnapshot().asOf;
+  let changed = false;
+  for (const trip of Object.values(app!.trips)) {
+    if (trip.fxAsOf === asOf) continue;
+    trip.debtEdges = deriveDebtEdges(trip.expenses);
+    trip.netObligations = [];
+    trip.nettingSummary = null;
+    trip.claimLinks = [];
+    trip.complianceFlags = [];
+    trip.complianceRan = false;
+    trip.reconciliationResults = [];
+    trip.reconciliationRan = false;
+    trip.vendorSummary = [];
+    trip.fxAsOf = asOf;
+    changed = true;
+  }
+  if (changed) save();
 }
 
 function load(): AppState | null {
@@ -326,6 +384,28 @@ export function initStore(): void {
   if (app) return;
   app = load() ?? emptyApp();
   save();
+}
+
+export async function initPersistentStore(): Promise<void> {
+  if (app) return;
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) {
+    initStore();
+    return;
+  }
+  const modulePath = "./postgres.js";
+  const { createPostgresPersistence } = (await import(
+    /* @vite-ignore */ modulePath
+  )) as {
+    createPostgresPersistence: (
+      url: string,
+    ) => Promise<PersistenceAdapter & { load(): Promise<AppState | null> }>;
+  };
+  const adapter = await createPostgresPersistence(connectionString);
+  const loaded = await adapter.load();
+  app = loaded ?? emptyApp();
+  persistence = adapter;
+  await adapter.save(structuredClone(app));
 }
 
 export function getApp(): AppState {
@@ -532,7 +612,6 @@ function invalidateDerived(): void {
   st.vendorSummary = [];
   st.claimLinks = [];
   st.invoices = [];
-  st.ledger = [];
 }
 
 /** Wipe engine outputs (not invoices) before a fresh netting pass. */
@@ -546,7 +625,6 @@ export function resetEngineOutputs(): void {
   st.reconciliationRan = false;
   st.vendorSummary = [];
   st.claimLinks = [];
-  st.ledger = [];
   save();
 }
 

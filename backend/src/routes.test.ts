@@ -69,6 +69,7 @@ async function json(path: string, init?: RequestInit, authed = true) {
     ...init,
     headers: {
       "content-type": "application/json",
+      "x-litefx-request": "1",
       ...(authed && sessionCookie ? { cookie: sessionCookie } : {}),
       ...(init?.headers ?? {}),
     },
@@ -343,11 +344,10 @@ test("DELETE /expenses/:id removes the expense", async () => {
   assert.equal(scenario.body.expenses.length, 0);
 });
 
-test("POST /engine/run on an empty store returns zero nets", async () => {
+test("POST /engine/run rejects an empty trip", async () => {
   const { status, body } = await json("/engine/run", { method: "POST" });
-  assert.equal(status, 200);
-  assert.equal(body.netEdgeCount, 0);
-  assert.deepEqual(body.obligations, []);
+  assert.equal(status, 400);
+  assert.match(body.message, /shared expense/i);
 });
 
 test("shareable claim page 404s for a missing token", async () => {
@@ -467,6 +467,48 @@ test("POST /obligations/:id/rail overrides the chosen rail", async () => {
   });
   assert.equal(status, 200, body.message);
   assert.equal(body.obligation.chosenRail, "stable_bridge");
+});
+
+test("GET /health is public", async () => {
+  const { status, body } = await json("/health", undefined, false);
+  assert.equal(status, 200);
+  assert.equal(body.ok, true);
+  assert.equal(body.service, "litefx");
+});
+
+test("POST /engine/run rejects an empty trip and a second run", async () => {
+  const empty = await json("/engine/run", { method: "POST" });
+  assert.equal(empty.status, 400);
+  asUser(() => seedStore());
+  const first = await json("/engine/run", { method: "POST" });
+  assert.equal(first.status, 200);
+  const second = await json("/engine/run", { method: "POST" });
+  assert.equal(second.status, 409);
+});
+
+test("failed settle and claim use error status codes", async () => {
+  const missing = await json("/settlement/net-missing/settle", {
+    method: "POST",
+  });
+  assert.equal(missing.status, 404);
+  const claim = await json("/claim/cl_missing/claim", {
+    method: "POST",
+    body: JSON.stringify({ payoutMethod: "GrabPay" }),
+  });
+  assert.equal(claim.status, 404);
+});
+
+test("cookie mutations without the request header are blocked", async () => {
+  const res = await fetch(`${base}/clear`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      cookie: sessionCookie,
+    },
+  });
+  assert.equal(res.status, 403);
+  const blocked = (await res.json()) as { message: string };
+  assert.match(blocked.message, /cross-origin/i);
 });
 
 test("POST /entities/:id/link-account turns Eve's claim into local PayNow", async () => {

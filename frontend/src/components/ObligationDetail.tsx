@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { DebtEdge, Entity, NetObligation } from "../api/client";
 
@@ -32,13 +32,19 @@ export function ObligationDetail({
   const slip = paymentSlip(obligation, fromEntity, toEntity);
   const [copied, setCopied] = useState(false);
   const canEdit = obligation.status !== "settled" && !busy;
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previous?.focus();
+    };
   }, [onClose]);
 
   const consolidated = debtEdges.filter(
@@ -47,13 +53,15 @@ export function ObligationDetail({
       (e.from === obligation.to && e.to === obligation.from),
   );
 
+  const [copyFailed, setCopyFailed] = useState(false);
   const copySlip = async () => {
     try {
       await navigator.clipboard.writeText(slip.text);
       setCopied(true);
+      setCopyFailed(false);
       setTimeout(() => setCopied(false), 1600);
     } catch {
-      /* ignore */
+      setCopyFailed(true);
     }
   };
 
@@ -65,8 +73,13 @@ export function ObligationDetail({
       <div
         className="glass-strong animate-scale-in relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl p-6"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="routing-detail-title"
       >
         <button
+          ref={closeRef}
+          type="button"
           onClick={onClose}
           className="text-slate-500 hover:text-slate-200 hover:bg-white/[0.06] absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full transition-colors"
           aria-label="Close"
@@ -79,7 +92,10 @@ export function ObligationDetail({
           <span className="text-slate-500">→</span>
           <Avatar id={toEntity.id} name={toEntity.name} size={36} />
           <div className="min-w-0">
-            <p className="text-slate-100 truncate text-sm font-semibold">
+            <p
+              id="routing-detail-title"
+              className="text-slate-100 truncate text-sm font-semibold"
+            >
               {fromEntity.name.trim()} → {toEntity.name.trim()}
             </p>
             <p className="text-slate-500 text-[11px]">
@@ -127,7 +143,7 @@ export function ObligationDetail({
               onClick={() => void copySlip()}
               className="text-slate-400 hover:text-slate-100 text-[11px] font-medium"
             >
-              {copied ? "Copied" : "Copy"}
+              {copyFailed ? "Copy failed" : copied ? "Copied" : "Copy"}
             </button>
           </div>
           <p className="text-slate-300 text-xs leading-relaxed">{slip.text}</p>

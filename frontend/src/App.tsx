@@ -106,13 +106,17 @@ export default function App() {
   }, [fetchScenario, user]);
 
   const handleDataAdded = useCallback(
-    (msg: string) => {
+    async (msg: string) => {
+      const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
       setEditEntityId(null);
       setEditExpenseId(null);
-      fetchScenario();
-      notify(msg);
+      await fetchScenario();
+      notify(
+        hadTransfers ? `${msg} · run Net & route again` : msg,
+        hadTransfers ? "warn" : "ok",
+      );
     },
-    [fetchScenario, notify],
+    [fetchScenario, notify, scenario?.netObligations.length],
   );
 
   const handleClear = useCallback(async () => {
@@ -201,6 +205,14 @@ export default function App() {
   );
 
   const handleEngine = async () => {
+    if (!scenario || scenario.debtEdges.length === 0) {
+      notify("Add a shared expense before netting", "warn");
+      return;
+    }
+    if (scenario.netObligations.length > 0) {
+      notify("This trip is already netted", "warn");
+      return;
+    }
     setLoading("engine");
     try {
       const r = await client.runEngine();
@@ -387,6 +399,7 @@ export default function App() {
 
   const obligations = scenario?.netObligations ?? [];
   const hasNetted = obligations.length > 0;
+  const debtCount = scenario?.debtEdges.length ?? 0;
 
   useEffect(() => {
     if (detailId && !obligations.some((o) => o.id === detailId)) {
@@ -405,7 +418,7 @@ export default function App() {
       icon: <IconMerge className="h-4 w-4" />,
       done: railTypes.length > 0,
       loadingKey: "engine",
-      enabled: true,
+      enabled: debtCount > 0 && !hasNetted,
       onClick: handleEngine,
     },
     {
@@ -472,7 +485,6 @@ export default function App() {
     );
   }
 
-  const debtCount = scenario.debtEdges.length;
   const tripEmpty = scenario.entities.length === 0;
   const headerAction =
     debtCount > 0 && !hasNetted
@@ -576,6 +588,7 @@ export default function App() {
               onReset={handleReset}
               onLogout={() => void handleLogout()}
               resetBusy={loading === "reset"}
+              demoMode={isStaticEngine}
             />
           </div>
         </div>
@@ -591,12 +604,32 @@ export default function App() {
           </div>
         )}
 
+        {loading === "scenario" && (
+          <p
+            className="text-slate-500 animate-fade-in px-1 text-xs"
+            role="status"
+            aria-live="polite"
+          >
+            Updating trip…
+          </p>
+        )}
+
         {tripEmpty && (
           <HeroIntro
             onStart={() => setTravelerSignal((s) => s + 1)}
             onSample={handleLoadSample}
           />
         )}
+
+        {!tripEmpty &&
+          debtCount > 0 &&
+          !hasNetted &&
+          scenario.ledger.length > 0 && (
+            <p className="animate-fade-in rounded-xl border border-[#c4a574]/25 bg-[#c4a574]/10 px-3.5 py-2.5 text-[13px] text-[#c4a574]">
+              Trip changed after settlement. Previous payouts stay in the log —
+              run Net & route again for the new balances.
+            </p>
+          )}
 
         {!tripEmpty && (
           <section className="animate-fade-in-up">
@@ -627,31 +660,34 @@ export default function App() {
                 />
               </div>
             )}
-            {obligations.some(
-              (o) =>
-                o.chosenRail === "claim_link" &&
-                o.claimToken &&
-                o.status !== "settled",
-            ) && (
-              <p className="mb-3 text-[12px] text-[#c4a574]">
-                A recipient still needs to claim.{" "}
-                <button
-                  type="button"
-                  className="underline underline-offset-2"
-                  onClick={() => {
-                    const tok = obligations.find(
-                      (o) =>
-                        o.chosenRail === "claim_link" &&
-                        o.claimToken &&
-                        o.status !== "settled",
-                    )?.claimToken;
-                    if (tok) setClaimModalToken(tok);
-                  }}
-                >
-                  Open claim link
-                </button>
-              </p>
-            )}
+            {(() => {
+              const pendingClaims = obligations.filter(
+                (o) =>
+                  o.chosenRail === "claim_link" &&
+                  o.claimToken &&
+                  o.status !== "settled",
+              );
+              if (pendingClaims.length === 0) return null;
+              return (
+                <div className="mb-3 flex flex-wrap items-center gap-2 text-[12px] text-[#c4a574]">
+                  <span>
+                    {pendingClaims.length} recipient
+                    {pendingClaims.length === 1 ? "" : "s"} still need
+                    {pendingClaims.length === 1 ? "s" : ""} to claim.
+                  </span>
+                  {pendingClaims.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className="underline underline-offset-2"
+                      onClick={() => setClaimModalToken(o.claimToken!)}
+                    >
+                      Open {entityMap.get(o.to)?.name.split(" ")[0] ?? "claim"}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {obligations.map((ob) => {
                 const from = entityMap.get(ob.from);
@@ -676,6 +712,10 @@ export default function App() {
                     onSettle={handleSettle}
                     onOpenClaim={setClaimModalToken}
                     onOpenDetail={setDetailId}
+                    busy={loading !== null}
+                    onCopyError={() =>
+                      notify("Could not copy instructions", "warn")
+                    }
                   />
                 );
               })}
@@ -706,12 +746,18 @@ export default function App() {
         )}
 
         <footer className="text-slate-500 px-1 pt-1 pb-3 text-[11px]">
-          Sandbox — rails are simulated; FX rates are live.
+          Sandbox — rails are simulated; FX rates are{" "}
+          {scenario.fx?.live ? "live" : "using the offline snapshot"}.
         </footer>
       </main>
 
       {/* Toast feedback */}
-      <div className="pointer-events-none fixed right-5 bottom-5 z-50 flex flex-col items-end gap-2">
+      <div
+        className="pointer-events-none fixed right-5 bottom-5 z-50 flex flex-col items-end gap-2"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {toasts.map((t) => (
           <div
             key={t.id}
@@ -835,7 +881,7 @@ function ReductionStats({
   const fees = useCountUp(result.feeSavingsUsd);
   const moved = useCountUp(result.netTotalUsd);
   const corridor = useCountUp(result.corridorSavingsUsd ?? 0);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
     <section className="glass animate-fade-in-up overflow-hidden rounded-2xl">
       <button

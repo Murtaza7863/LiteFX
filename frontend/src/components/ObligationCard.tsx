@@ -33,6 +33,8 @@ interface Props {
   onSettle: (id: string) => void;
   onOpenClaim: (token: string) => void;
   onOpenDetail: (id: string) => void;
+  onCopyError?: () => void;
+  busy?: boolean;
   className?: string;
 }
 
@@ -43,6 +45,8 @@ export function ObligationCard({
   onSettle,
   onOpenClaim,
   onOpenDetail,
+  onCopyError,
+  busy = false,
   className = "",
 }: Props) {
   const rail = obligation.chosenRail;
@@ -134,20 +138,26 @@ export function ObligationCard({
         {obligation.status === "routed" && !obligation.claimToken && (
           <button
             onClick={() => onSettle(obligation.id)}
+            disabled={busy}
             className="btn-primary w-full"
           >
-            {rail === "claim_link" ? "Generate claim link" : "Settle transfer"}
+            {busy
+              ? "Working…"
+              : rail === "claim_link"
+                ? "Generate claim link"
+                : "Settle transfer"}
           </button>
         )}
-        {obligation.claimToken && (
+        {obligation.claimToken && obligation.status !== "settled" && (
           <button
             onClick={() => onOpenClaim(obligation.claimToken!)}
+            disabled={busy}
             className="btn-primary w-full"
           >
             Open claim link →
           </button>
         )}
-        {obligation.status === "settled" && !obligation.claimToken && (
+        {obligation.status === "settled" && (
           <div className="flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-[#9aaa8c]">
             <CheckCircleIcon className="h-4 w-4" /> Settled
           </div>
@@ -168,7 +178,7 @@ export function ObligationCard({
               setCopied(true);
               setTimeout(() => setCopied(false), 1600);
             } catch {
-              /* ignore */
+              onCopyError?.();
             }
           }}
           className="text-slate-500 hover:text-slate-200 mt-1.5 w-full text-center text-[11px] font-medium transition-colors"

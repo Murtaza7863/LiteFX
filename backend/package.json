@@ -1,22 +1,27 @@
 {
-  "name": "trip-wallet-backend",
+  "name": "litefx-backend",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "tsx src/index.ts",
-    "test": "LITEFX_DB_PATH=data/db.test.json npx tsx --test --test-concurrency=1 src/agents/*.test.ts src/store.test.ts src/routes.test.ts src/auth.test.ts src/types.test.ts src/data/*.test.ts"
+    "start": "node dist/index.js",
+    "test": "LITEFX_DB_PATH=data/db.test.json npx tsx --test --test-concurrency=1 src/agents/*.test.ts src/store.test.ts src/routes.test.ts src/auth.test.ts src/types.test.ts src/data/*.test.ts src/journey.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "tsx": "^4.6.2"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.10.0",
+    "@types/pg": "^8.21.0",
+    "tsx": "^4.6.2",
     "typescript": "^5.3.3"
   }
 }

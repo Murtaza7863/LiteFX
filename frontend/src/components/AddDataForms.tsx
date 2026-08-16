@@ -252,23 +252,43 @@ export function AddDataForms({
 
   const submitExpense = async () => {
     const amt = parseFloat(eAmount);
-    if (
-      !ePayer ||
-      !Number.isFinite(amt) ||
-      !(amt > 0) ||
-      amt > 1_000_000_000_000
-    )
+    if (!ePayer) {
+      setFormError("Choose who paid for this expense.");
       return;
+    }
+    if (!Number.isFinite(amt) || !(amt > 0)) {
+      setFormError("Enter a positive expense amount.");
+      return;
+    }
+    if (amt > 1_000_000_000_000) {
+      setFormError("Expense amount is too large.");
+      return;
+    }
+    const partList = eAll ? entities.map((e) => e.id) : eParticipants;
+    if (partList.length === 0) {
+      setFormError("Select at least one person to split this expense with.");
+      return;
+    }
     setBusy(true);
     setFormError(null);
     try {
-      const partList = eAll ? entities.map((e) => e.id) : eParticipants;
-      if (!eAll && partList.length === 0) return;
       const parts: Record<string, number> = {};
       if (eSplitMode !== "equal") {
         for (const pid of partList) {
-          const v = parseFloat(eParts[pid] ?? "");
+          const raw = eParts[pid]?.trim() ?? "";
+          if (!raw) continue;
+          const v = Number(raw);
+          if (!Number.isFinite(v) || v < 0) {
+            throw new Error("Split shares must be positive numbers.");
+          }
           if (v > 0) parts[pid] = v;
+        }
+        const assigned = Object.values(parts).reduce((sum, v) => sum + v, 0);
+        if (eSplitMode === "percent" && assigned > 100.01) {
+          throw new Error("Percentage shares cannot exceed 100%.");
+        }
+        if (eSplitMode === "amount" && assigned > amt + 0.01) {
+          throw new Error("Assigned shares cannot exceed the expense total.");
         }
       }
       const payload = {
@@ -604,6 +624,7 @@ export function AddDataForms({
                   <button
                     type="button"
                     key={en.id}
+                    aria-pressed={on}
                     onClick={() =>
                       setEParticipants((p) =>
                         on ? p.filter((x) => x !== en.id) : [...p, en.id],
