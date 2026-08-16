@@ -1,54 +1,27 @@
 # LiteFX
 
-Split a group trip that spans countries. LiteFX nets the IOUs into a handful of transfers, then picks a simulated rail for each corridor: PayNow, PromptPay, SEPA, Zelle, a real PayNow-PromptPay link, or USDC when nothing else fits.
-
 **Live demo:** https://murtaza7863.github.io/LiteFX/
 
-React + Vite frontend, Express + TypeScript backend. Rails are simulated. No real bank or card charges.
+A group trip splitter for people who paid in different countries. LiteFX nets the IOUs into a handful of transfers, then picks a rail for each corridor: PayNow, PromptPay, SEPA, Zelle, PayNow-PromptPay, or USDC.
 
-## 2-minute demo
+## What it can do
 
-1. Open the live demo (or `npm install && npm run dev`).
-2. **Load sample.** Bangkok trip, six people in SG / TH / US / DE.
-3. **Net & route.** Pairwise debts collapse into a handful of transfers.
-4. Open a transfer, then **Try another rail** (PromptPay 0% to USDC 1.5%).
-5. Edit a traveler's country and Save. Rails remap. An impossible domestic payout never appears.
-6. **Settle.** Copy the send slip. That's the product.
+- Track a trip: travelers, countries, linked rails, and shared expenses in mixed currencies.
+- Net pairwise debts into the fewest transfers, matching cheap corridors first (same-country / SEPA, then linked rails, then USDC).
+- Show a send slip for each transfer: who pays whom, which rail, fee, FX.
+- Let you try another rail on a transfer (PromptPay at 0% vs USDC at 1.5%) and watch the fee change.
+- Remap rails when someone changes country. A Thai PromptPay payout will not survive a move to Japan.
+- Settle a transfer (copy the slip) or, if someone has no linked account, issue a claim link they can cash out in their country.
 
-Claim links still exist if you add someone with **Has a linked account** off. The sample does not use that path.
+## What it cannot do
 
-## Run locally
+- Move real money. Every rail is simulated. No bank, card, or on-chain calls.
+- Invent a domestic rail that does not exist in that country.
+- Share a claim link across devices on the GitHub Pages demo. That build lives in the browser; the token stays on that machine.
+- Replace a bank, Wise, or Splitwise. It is a corridor-aware settlement layer on top of a trip tab.
 
-```bash
-npm install
-npm run dev
-```
-
-- App: http://localhost:5173
-- API: http://localhost:3001
-
-Sign up, then load the sample. Data lives in `backend/data/db.json`.
+Open the demo, load the sample Bangkok trip, hit **Net & route**, then change a traveler's country and Save.
 
 ```bash
-npm test
+npm install && npm run dev
 ```
-
-## Where the logic lives
-
-| Piece | Where |
-| --- | --- |
-| Corridor-aware netting | `backend/src/agents/netting.ts` |
-| Rail pick / override / rebuild | `backend/src/agents/railRouter.ts` |
-| Country + rail table | `backend/src/data/countries.ts` |
-| Sample trip | `backend/src/data/seed.ts` |
-| Pages (in-browser engine) | `frontend/src/engine/staticClient.ts` |
-
-## Deploy
-
-Pushes to `main` publish GitHub Pages. For a durable API, deploy with `render.yaml` and set `DATABASE_URL` to a [Neon](https://neon.tech) Postgres URL.
-
-| | Store | Auth |
-| --- | --- | --- |
-| Local | JSON file | Signup |
-| GitHub Pages | `localStorage` | Auto demo |
-| Render + Neon | Postgres | Signup / demo |
