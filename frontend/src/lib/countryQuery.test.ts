@@ -19,9 +19,11 @@ test("typing each country's name or code commits that country", () => {
   }
 });
 
-test("an empty or unmatched query does not commit a country", () => {
-  assert.equal(countryToCommit("", COUNTRIES, 0), null);
-  assert.equal(countryToCommit("   ", COUNTRIES, 0), null);
+test("highlighting a country with an empty query still commits that row", () => {
+  const jp = COUNTRIES.findIndex((c) => c.code === "JP");
+  assert.ok(jp >= 0);
+  assert.equal(countryToCommit("", COUNTRIES, jp), "JP");
+  assert.equal(countryToCommit("   ", COUNTRIES, jp), "JP");
   assert.equal(countryToCommit("zzzz-no-country", [], 0), null);
 });
 

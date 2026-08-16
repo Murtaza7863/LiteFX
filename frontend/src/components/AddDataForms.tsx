@@ -12,7 +12,7 @@ import {
 } from "../lib/countries";
 import { railForCountry } from "../lib/railPick";
 import { formatUsd, previewShares, toUsd } from "../lib/tripMath";
-import { CountrySelect } from "./CountrySelect";
+import { CountrySelect, type CountrySelectHandle } from "./CountrySelect";
 import { IconPlus, IconDownload, IconMore } from "./icons";
 import { SavedPeople } from "./SavedPeople";
 
@@ -125,6 +125,7 @@ export function AddDataForms({
   const [tName, setTName] = useState("");
   const [tCountry, setTCountry] = useState("SG");
   const tCountryRef = useRef("SG");
+  const countrySelectRef = useRef<CountrySelectHandle>(null);
   const [tContact, setTContact] = useState("");
   const [tHasAccount, setTHasAccount] = useState(true);
   const [tRail, setTRail] = useState(railForCountry("SG"));
@@ -242,6 +243,7 @@ export function AddDataForms({
 
   const submitTraveler = async () => {
     if (!tName.trim()) return;
+    countrySelectRef.current?.commit();
     setBusy(true);
     setFormError(null);
     try {
@@ -540,12 +542,16 @@ export function AddDataForms({
       )}
 
       {open === "traveler" && (
-        <div
+        <form
           className={
             quiet
               ? "animate-fade-in grid gap-3 sm:grid-cols-2"
               : "bg-white/[0.03] border-white/[0.06] animate-fade-in grid gap-3 rounded-xl border p-3 sm:grid-cols-2"
           }
+          onSubmit={(e) => {
+            e.preventDefault();
+            void submitTraveler();
+          }}
         >
           {quiet && !editEntity && (
             <p className="font-display text-slate-100 text-lg font-semibold tracking-[-0.03em] sm:col-span-2">
@@ -565,8 +571,10 @@ export function AddDataForms({
             onChange={(e) => setTName(e.target.value)}
           />
           <CountrySelect
+            ref={countrySelectRef}
             value={tCountry}
             onChange={(code) => {
+              if (code === tCountryRef.current) return;
               tCountryRef.current = code;
               setTCountry(code);
               setTRail(railForCountry(code));
@@ -610,8 +618,8 @@ export function AddDataForms({
               Cancel
             </button>
             <button
-              type="button"
-              onClick={submitTraveler}
+              type="submit"
+              onMouseDown={() => countrySelectRef.current?.commit()}
               disabled={busy || !tName.trim()}
               className="btn-primary flex-1"
             >
@@ -623,7 +631,7 @@ export function AddDataForms({
               ? "Edits update this person in saved people for later trips."
               : "New travelers are saved for later trips."}
           </p>
-        </div>
+        </form>
       )}
 
       {open === "expense" && (

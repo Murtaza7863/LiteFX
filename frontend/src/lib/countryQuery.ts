@@ -21,13 +21,11 @@ export function filterCountries(query: string): typeof COUNTRIES {
   return scored.map((x) => x.c);
 }
 
-/** Country code to commit when leaving the picker with a typed query. */
+/** Highlighted country in the open picker — including when the query is empty. */
 export function countryToCommit(
-  query: string,
+  _query: string,
   matches: { code: string }[],
   active: number,
 ): string | null {
-  const q = query.trim();
-  if (!q) return null;
   return matches[active]?.code ?? null;
 }
