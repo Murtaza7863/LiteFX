@@ -62,9 +62,9 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
             Nets messy IOUs into the fewest transfers, then picks a rail for
             each corridor.{" "}
             {isStaticEngine
-              ? "This browser demo stays on this device"
-              : "Your trips are saved to your account"}{" "}
-            — no real money moves.
+              ? "This browser demo stays on this device."
+              : "Your trips are saved to your account."}{" "}
+            No real money moves.
           </p>
           {error && <p className="mt-4 text-sm text-[#c48878]">{error}</p>}
           <button

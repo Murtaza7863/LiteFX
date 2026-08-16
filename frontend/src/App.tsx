@@ -967,7 +967,7 @@ export default function App() {
         )}
 
         <footer className="text-slate-500 px-1 pt-1 pb-3 text-[11px]">
-          Sandbox — rails are simulated; FX rates are{" "}
+          Sandbox. Rails are simulated; FX rates are{" "}
           {scenario.fx?.live ? "live" : "using the offline snapshot"}.
         </footer>
       </main>

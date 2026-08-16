@@ -88,7 +88,7 @@ export function AccountMenu({
             </button>
           )}
           <p className="text-slate-500 border-t border-[var(--border)] px-3 py-2 text-[10px] leading-relaxed">
-            Sandbox — rails are simulated; no real money moves.
+            Sandbox. Rails are simulated; no real money moves.
           </p>
         </div>
       )}
