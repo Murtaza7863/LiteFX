@@ -72,7 +72,7 @@ export function AccountMenu({
             }}
             className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm disabled:opacity-40"
           >
-            Reset to sample trip
+            Reset this trip to sample
           </button>
           {!demoMode && (
             <button

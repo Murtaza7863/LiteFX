@@ -37,22 +37,28 @@ import {
   addExpense,
   addUser,
   clearStore,
+  createTrip,
+  currentTripSummary,
   deleteEntity,
   deleteExpense,
-  findClaimOwner,
+  deleteTrip,
   findUserByEmail,
   findUserById,
   getClaimLink,
   getStore,
   initStore,
+  listTripSummaries,
   refreshDerivedForFx,
+  renameTrip,
   runAsUser,
   seedStore,
+  selectTrip,
   toPublicUser,
   updateClaimLink,
   updateEntity,
   updateExpense,
   validateExpenseSplit,
+  withClaimTrip,
   type UserRecord,
 } from "../../../backend/src/store";
 
@@ -115,6 +121,8 @@ function tripCurrencies(): string[] {
 function scenario(): ScenarioResponse {
   const store = getStore();
   return {
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
     entities: store.entities,
     expenses: store.expenses,
     debtEdges: store.debtEdges,
@@ -299,10 +307,9 @@ export const staticClient = {
   },
   getClaim: async (token: string) => {
     await boot();
-    const owner = findClaimOwner(token);
-    const link = getClaimLink(token);
-    if (!link || !owner) throw new Error("Claim link not found.");
-    return runAsUser(owner, () => {
+    const result = withClaimTrip(token, () => {
+      const link = getClaimLink(token);
+      if (!link) throw new Error("Claim link not found.");
       if (link.status === "pending" && new Date(link.expiresAt) < new Date()) {
         updateClaimLink(link.token, { status: "expired" });
         link.status = "expired";
@@ -322,13 +329,16 @@ export const staticClient = {
         payoutOptions: payoutOptionsFor(recipient.country),
       } as ClaimDetails;
     });
+    if (!result) throw new Error("Claim link not found.");
+    return result;
   },
   claimWithPayout: async (token: string, payoutMethod: string) => {
     await boot();
-    const owner = findClaimOwner(token);
-    return owner
-      ? runAsUser(owner, () => claimWithPayoutMethod(token, payoutMethod))
-      : claimWithPayoutMethod(token, payoutMethod);
+    const result = withClaimTrip(token, () =>
+      claimWithPayoutMethod(token, payoutMethod),
+    );
+    if (!result) throw new Error("Claim link not found.");
+    return result;
   },
   clear: async () => {
     await boot();
@@ -480,6 +490,53 @@ export const staticClient = {
   deleteEntity: async (id: string) => {
     await boot();
     return asUser(() => ({ success: deleteEntity(id) }));
+  },
+  createTrip: async (name?: string) => {
+    await boot();
+    return asUser(() => {
+      const result = createTrip(name);
+      if ("error" in result) throw new Error(result.error);
+      return {
+        success: true as const,
+        trip: currentTripSummary(),
+        trips: listTripSummaries(),
+      };
+    });
+  },
+  selectTrip: async (id: string) => {
+    await boot();
+    return asUser(() => {
+      if (!selectTrip(id)) throw new Error("Trip not found.");
+      return {
+        success: true as const,
+        trip: currentTripSummary(),
+        trips: listTripSummaries(),
+      };
+    });
+  },
+  renameTrip: async (id: string, name: string) => {
+    await boot();
+    return asUser(() => {
+      const result = renameTrip(id, name);
+      if ("error" in result) throw new Error(result.error);
+      return {
+        success: true as const,
+        trip: currentTripSummary(),
+        trips: listTripSummaries(),
+      };
+    });
+  },
+  deleteTrip: async (id: string) => {
+    await boot();
+    return asUser(() => {
+      const result = deleteTrip(id);
+      if ("error" in result) throw new Error(result.error);
+      return {
+        success: true as const,
+        trip: currentTripSummary(),
+        trips: listTripSummaries(),
+      };
+    });
   },
   me: async (): Promise<User | null> => {
     await boot();

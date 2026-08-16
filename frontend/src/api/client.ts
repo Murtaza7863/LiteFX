@@ -141,7 +141,22 @@ export interface SettlementPlan {
   insights: SettlementInsight[];
 }
 
+export interface TripSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+  travelerCount: number;
+  expenseCount: number;
+  settledCount: number;
+  ledgerCount: number;
+  netted: boolean;
+}
+
 export interface ScenarioResponse {
+  trip?: TripSummary;
+  trips?: TripSummary[];
   entities: Entity[];
   expenses: Expense[];
   debtEdges: DebtEdge[];
@@ -310,6 +325,28 @@ export const httpClient = {
     api<{ success: boolean }>(`/expenses/${id}`, "DELETE"),
   deleteEntity: (id: string) =>
     api<{ success: boolean }>(`/entities/${id}`, "DELETE"),
+  createTrip: (name?: string) =>
+    api<{ success: boolean; trip: TripSummary; trips: TripSummary[] }>(
+      "/trips",
+      "POST",
+      { name },
+    ),
+  selectTrip: (id: string) =>
+    api<{ success: boolean; trip: TripSummary; trips: TripSummary[] }>(
+      `/trips/${id}/select`,
+      "POST",
+    ),
+  renameTrip: (id: string, name: string) =>
+    api<{ success: boolean; trip: TripSummary; trips: TripSummary[] }>(
+      `/trips/${id}`,
+      "PATCH",
+      { name },
+    ),
+  deleteTrip: (id: string) =>
+    api<{ success: boolean; trip: TripSummary; trips: TripSummary[] }>(
+      `/trips/${id}`,
+      "DELETE",
+    ),
   me: async (): Promise<User | null> => {
     try {
       const r = await api<{ user: User }>("/auth/me", "GET", undefined, {

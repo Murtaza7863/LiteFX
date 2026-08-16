@@ -26,8 +26,9 @@ import { getFxSnapshot } from "./fx.js";
 import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
 
 // ──────────────────────────────────────────────
-// File-backed store. Users each own a trip. Auth
-// context (AsyncLocalStorage) selects which trip
+// File-backed store. Each user owns a workspace of
+// named trips. Auth context selects the user; the
+// active trip (or a claim-link override) is what
 // getStore() returns so requests cannot see each
 // other's expenses.
 // ──────────────────────────────────────────────
@@ -35,7 +36,10 @@ import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
 const DEFAULT_OWNER = "user-local";
+const SAMPLE_TRIP_NAME = "Bangkok Trip 2026";
+const MAX_TRIPS = 40;
 const als = new AsyncLocalStorage<string>();
+const tripAls = new AsyncLocalStorage<string>();
 
 function dbFile(): string {
   const envPath =
@@ -82,11 +86,36 @@ export interface PublicUser {
   name: string;
 }
 
+export interface TripRecord extends StoreState {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserWorkspace {
+  activeTripId: string;
+  trips: Record<string, TripRecord>;
+}
+
+export interface TripSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  active: boolean;
+  travelerCount: number;
+  expenseCount: number;
+  settledCount: number;
+  ledgerCount: number;
+  netted: boolean;
+}
+
 export interface AppState {
-  version: 2;
+  version: 3;
   users: UserRecord[];
   sessions: SessionRecord[];
-  trips: Record<string, StoreState>;
+  workspaces: Record<string, UserWorkspace>;
 }
 
 interface PersistenceAdapter {
@@ -226,21 +255,200 @@ let persistence: PersistenceAdapter | null = null;
 let persistenceError: string | null = null;
 
 function emptyApp(): AppState {
-  return { version: 2, users: [], sessions: [], trips: {} };
+  return { version: 3, users: [], sessions: [], workspaces: {} };
 }
 
 function ownerId(): string {
   return als.getStore() ?? DEFAULT_OWNER;
 }
 
-function ensureTrip(uid: string): StoreState {
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function newTripId(): string {
+  return `trip-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function validateTripName(raw: string | undefined): string | null {
+  const name = (raw ?? "").trim();
+  if (!name || name.length > 80) return null;
+  return name;
+}
+
+function inferTripName(state: StoreState): string {
+  const hay = (state.expenses ?? [])
+    .map((e) => e.description)
+    .join(" ")
+    .toLowerCase();
+  if (hay.includes("bangkok")) return SAMPLE_TRIP_NAME;
+  if ((state.entities?.length ?? 0) > 0 || (state.expenses?.length ?? 0) > 0) {
+    return "My trip";
+  }
+  return "New trip";
+}
+
+function blankTrip(name = "New trip"): TripRecord {
+  const t = nowIso();
+  return {
+    ...freshState(),
+    id: newTripId(),
+    name,
+    createdAt: t,
+    updatedAt: t,
+  };
+}
+
+function wrapTrip(
+  state: Partial<StoreState> & Partial<TripRecord>,
+  opts?: { id?: string; name?: string },
+): TripRecord {
+  const coerced = coerceTrip(state);
+  return {
+    ...coerced,
+    id: state.id || opts?.id || newTripId(),
+    name: (state.name || opts?.name || inferTripName(coerced)).slice(0, 80),
+    createdAt: state.createdAt || nowIso(),
+    updatedAt: state.updatedAt || nowIso(),
+  };
+}
+
+function isWorkspace(v: unknown): v is UserWorkspace {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    "activeTripId" in v &&
+    "trips" in v &&
+    typeof (v as UserWorkspace).trips === "object"
+  );
+}
+
+function looksLikeStore(v: unknown): v is Partial<StoreState> {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    (Array.isArray((v as StoreState).entities) ||
+      Array.isArray((v as StoreState).expenses))
+  );
+}
+
+function migrateWorkspace(raw: unknown): UserWorkspace {
+  if (isWorkspace(raw)) {
+    const trips: Record<string, TripRecord> = {};
+    for (const [id, trip] of Object.entries(raw.trips ?? {})) {
+      trips[id] = wrapTrip(trip, { id });
+    }
+    if (Object.keys(trips).length === 0) {
+      const t = blankTrip();
+      trips[t.id] = t;
+    }
+    const active =
+      raw.activeTripId && trips[raw.activeTripId]
+        ? raw.activeTripId
+        : Object.values(trips).sort((a, b) =>
+            b.updatedAt.localeCompare(a.updatedAt),
+          )[0].id;
+    return { activeTripId: active, trips };
+  }
+  if (looksLikeStore(raw)) {
+    const trip = wrapTrip(raw);
+    return { activeTripId: trip.id, trips: { [trip.id]: trip } };
+  }
+  const t = blankTrip();
+  return { activeTripId: t.id, trips: { [t.id]: t } };
+}
+
+export function normalizeApp(parsed: unknown): AppState | null {
+  if (!parsed || typeof parsed !== "object") return null;
+  const p = parsed as Partial<AppState> & {
+    trips?: Record<string, unknown>;
+    entities?: unknown;
+    expenses?: unknown;
+  };
+  const users = Array.isArray(p.users) ? p.users : [];
+  const sessions = Array.isArray(p.sessions) ? p.sessions : [];
+
+  if (p.version === 3 && p.workspaces && typeof p.workspaces === "object") {
+    const workspaces: Record<string, UserWorkspace> = {};
+    for (const [uid, ws] of Object.entries(p.workspaces)) {
+      workspaces[uid] = migrateWorkspace(ws);
+    }
+    return { version: 3, users, sessions, workspaces };
+  }
+
+  if (p.trips && typeof p.trips === "object") {
+    const workspaces: Record<string, UserWorkspace> = {};
+    for (const [uid, raw] of Object.entries(p.trips)) {
+      workspaces[uid] = migrateWorkspace(raw);
+    }
+    return { version: 3, users, sessions, workspaces };
+  }
+
+  if (p.entities || p.expenses) {
+    const ws = migrateWorkspace(p);
+    return {
+      version: 3,
+      users,
+      sessions,
+      workspaces: { [DEFAULT_OWNER]: ws },
+    };
+  }
+
+  if (p.version === 3 || p.version === 2) {
+    return { version: 3, users, sessions, workspaces: {} };
+  }
+  return null;
+}
+
+function ensureWorkspace(uid: string): UserWorkspace {
   if (!app) app = emptyApp();
-  if (!app.trips[uid]) app.trips[uid] = freshState();
-  return app.trips[uid];
+  if (!app.workspaces[uid]) {
+    const t = blankTrip();
+    app.workspaces[uid] = { activeTripId: t.id, trips: { [t.id]: t } };
+  }
+  const ws = app.workspaces[uid];
+  if (!ws.trips[ws.activeTripId]) {
+    const first = Object.values(ws.trips)[0];
+    if (first) ws.activeTripId = first.id;
+    else {
+      const t = blankTrip();
+      ws.trips[t.id] = t;
+      ws.activeTripId = t.id;
+    }
+  }
+  return ws;
+}
+
+function currentTrip(): TripRecord {
+  const ws = ensureWorkspace(ownerId());
+  const override = tripAls.getStore();
+  const id = override && ws.trips[override] ? override : ws.activeTripId;
+  return ws.trips[id];
+}
+
+function summarizeTrip(t: TripRecord, activeId: string): TripSummary {
+  return {
+    id: t.id,
+    name: t.name,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+    active: t.id === activeId,
+    travelerCount: t.entities.length,
+    expenseCount: t.expenses.length,
+    settledCount: t.netObligations.filter((o) => o.status === "settled").length,
+    ledgerCount: t.ledger.length,
+    netted: t.netObligations.length > 0,
+  };
 }
 
 function save(): void {
   if (!app) return;
+  const uid = als.getStore();
+  if (uid && app.workspaces[uid]) {
+    const ws = app.workspaces[uid];
+    const trip = ws.trips[ws.activeTripId];
+    if (trip) trip.updatedAt = nowIso();
+  }
   if (persistence) {
     void persistence
       .save(structuredClone(app))
@@ -327,19 +535,21 @@ export function refreshDerivedForFx(): void {
   initStore();
   const asOf = getFxSnapshot().asOf;
   let changed = false;
-  for (const trip of Object.values(app!.trips)) {
-    if (trip.fxAsOf === asOf) continue;
-    trip.debtEdges = deriveDebtEdges(trip.expenses);
-    trip.netObligations = [];
-    trip.nettingSummary = null;
-    trip.claimLinks = [];
-    trip.complianceFlags = [];
-    trip.complianceRan = false;
-    trip.reconciliationResults = [];
-    trip.reconciliationRan = false;
-    trip.vendorSummary = [];
-    trip.fxAsOf = asOf;
-    changed = true;
+  for (const ws of Object.values(app!.workspaces)) {
+    for (const trip of Object.values(ws.trips)) {
+      if (trip.fxAsOf === asOf) continue;
+      trip.debtEdges = deriveDebtEdges(trip.expenses);
+      trip.netObligations = [];
+      trip.nettingSummary = null;
+      trip.claimLinks = [];
+      trip.complianceFlags = [];
+      trip.complianceRan = false;
+      trip.reconciliationResults = [];
+      trip.reconciliationRan = false;
+      trip.vendorSummary = [];
+      trip.fxAsOf = asOf;
+      changed = true;
+    }
   }
   if (changed) save();
 }
@@ -349,32 +559,7 @@ function load(): AppState | null {
     const file = dbFile();
     if (!existsSync(file)) return null;
     const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as Partial<AppState> & Partial<StoreState>;
-    if (
-      parsed.version === 2 &&
-      parsed.trips &&
-      typeof parsed.trips === "object"
-    ) {
-      const trips: Record<string, StoreState> = {};
-      for (const [id, trip] of Object.entries(parsed.trips)) {
-        trips[id] = coerceTrip(trip);
-      }
-      return {
-        version: 2,
-        users: Array.isArray(parsed.users) ? parsed.users : [],
-        sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
-        trips,
-      };
-    }
-    if (parsed.entities || parsed.expenses) {
-      return {
-        version: 2,
-        users: [],
-        sessions: [],
-        trips: { [DEFAULT_OWNER]: coerceTrip(parsed) },
-      };
-    }
-    return null;
+    return normalizeApp(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -399,11 +584,11 @@ export async function initPersistentStore(): Promise<void> {
   )) as {
     createPostgresPersistence: (
       url: string,
-    ) => Promise<PersistenceAdapter & { load(): Promise<AppState | null> }>;
+    ) => Promise<PersistenceAdapter & { load(): Promise<unknown> }>;
   };
   const adapter = await createPostgresPersistence(connectionString);
   const loaded = await adapter.load();
-  app = loaded ?? emptyApp();
+  app = normalizeApp(loaded) ?? emptyApp();
   persistence = adapter;
   await adapter.save(structuredClone(app));
 }
@@ -415,16 +600,28 @@ export function getApp(): AppState {
 
 export function getStore(): StoreState {
   initStore();
-  return ensureTrip(ownerId());
+  return currentTrip();
 }
 
 export function runAsUser<T>(userId: string, fn: () => T): T {
   return als.run(userId, fn);
 }
 
+export function runAsTrip<T>(tripId: string, fn: () => T): T {
+  return tripAls.run(tripId, fn);
+}
+
 export function seedStore(): void {
   initStore();
-  app!.trips[ownerId()] = sampleState();
+  const ws = ensureWorkspace(ownerId());
+  const current = ws.trips[ws.activeTripId];
+  const seeded = wrapTrip(sampleState(), {
+    id: current.id,
+    name: SAMPLE_TRIP_NAME,
+  });
+  seeded.createdAt = current.createdAt;
+  seeded.updatedAt = nowIso();
+  ws.trips[current.id] = seeded;
   save();
 }
 
@@ -448,14 +645,18 @@ export function findUserById(id: string): UserRecord | undefined {
 export function addUser(user: UserRecord): void {
   const st = getApp();
   st.users.push(user);
-  const orphan = st.trips[DEFAULT_OWNER];
+  const orphan = st.workspaces[DEFAULT_OWNER];
   const orphanHasData =
-    orphan && (orphan.entities.length > 0 || orphan.expenses.length > 0);
+    orphan &&
+    Object.values(orphan.trips).some(
+      (t) => t.entities.length > 0 || t.expenses.length > 0,
+    );
   if (st.users.length === 1 && orphanHasData) {
-    st.trips[user.id] = orphan;
-    delete st.trips[DEFAULT_OWNER];
-  } else if (!st.trips[user.id]) {
-    st.trips[user.id] = freshState();
+    st.workspaces[user.id] = orphan;
+    delete st.workspaces[DEFAULT_OWNER];
+  } else if (!st.workspaces[user.id]) {
+    const t = blankTrip();
+    st.workspaces[user.id] = { activeTripId: t.id, trips: { [t.id]: t } };
   }
   save();
 }
@@ -506,11 +707,27 @@ export function pruneExpiredSessions(): void {
   }
 }
 
-export function findClaimOwner(token: string): string | undefined {
+export function findClaimContext(
+  token: string,
+): { ownerId: string; tripId: string } | undefined {
   initStore();
-  for (const [uid, trip] of Object.entries(app!.trips)) {
-    if (trip.claimLinks.some((c) => c.token === token)) return uid;
+  for (const [uid, ws] of Object.entries(app!.workspaces)) {
+    for (const trip of Object.values(ws.trips)) {
+      if (trip.claimLinks.some((c) => c.token === token)) {
+        return { ownerId: uid, tripId: trip.id };
+      }
+    }
   }
+}
+
+export function findClaimOwner(token: string): string | undefined {
+  return findClaimContext(token)?.ownerId;
+}
+
+export function withClaimTrip<T>(token: string, fn: () => T): T | undefined {
+  const ctx = findClaimContext(token);
+  if (!ctx) return undefined;
+  return runAsUser(ctx.ownerId, () => runAsTrip(ctx.tripId, fn));
 }
 
 // Convenience getters
@@ -533,9 +750,11 @@ export function updateNetObligation(
 
 export function getClaimLink(token: string): ClaimLink | undefined {
   initStore();
-  for (const trip of Object.values(app!.trips)) {
-    const cl = trip.claimLinks.find((c) => c.token === token);
-    if (cl) return cl;
+  for (const ws of Object.values(app!.workspaces)) {
+    for (const trip of Object.values(ws.trips)) {
+      const cl = trip.claimLinks.find((c) => c.token === token);
+      if (cl) return cl;
+    }
   }
 }
 
@@ -725,6 +944,86 @@ export function deleteEntity(id: string): boolean {
 // Start from a blank slate (a real tool, not a fixed demo).
 export function clearStore(): void {
   initStore();
-  app!.trips[ownerId()] = freshState();
+  const ws = ensureWorkspace(ownerId());
+  const current = ws.trips[ws.activeTripId];
+  ws.trips[current.id] = {
+    ...freshState(),
+    id: current.id,
+    name: current.name,
+    createdAt: current.createdAt,
+    updatedAt: nowIso(),
+  };
   save();
+}
+
+export function listTripSummaries(): TripSummary[] {
+  initStore();
+  const ws = ensureWorkspace(ownerId());
+  return Object.values(ws.trips)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map((t) => summarizeTrip(t, ws.activeTripId));
+}
+
+export function currentTripSummary(): TripSummary {
+  initStore();
+  const ws = ensureWorkspace(ownerId());
+  return summarizeTrip(currentTrip(), ws.activeTripId);
+}
+
+export function createTrip(nameRaw?: string): TripRecord | { error: string } {
+  initStore();
+  const name = validateTripName(nameRaw || "New trip");
+  if (!name) return { error: "Trip name must be 1–80 characters." };
+  const ws = ensureWorkspace(ownerId());
+  if (Object.keys(ws.trips).length >= MAX_TRIPS) {
+    return { error: `You can keep up to ${MAX_TRIPS} trips.` };
+  }
+  const trip = blankTrip(name);
+  ws.trips[trip.id] = trip;
+  ws.activeTripId = trip.id;
+  save();
+  return trip;
+}
+
+export function selectTrip(id: string): boolean {
+  initStore();
+  const ws = ensureWorkspace(ownerId());
+  if (!ws.trips[id]) return false;
+  ws.activeTripId = id;
+  save();
+  return true;
+}
+
+export function renameTrip(
+  id: string,
+  nameRaw: string,
+): TripRecord | { error: string } {
+  initStore();
+  const name = validateTripName(nameRaw);
+  if (!name) return { error: "Trip name must be 1–80 characters." };
+  const ws = ensureWorkspace(ownerId());
+  const trip = ws.trips[id];
+  if (!trip) return { error: "Trip not found." };
+  trip.name = name;
+  trip.updatedAt = nowIso();
+  save();
+  return trip;
+}
+
+export function deleteTrip(id: string): { ok: true } | { error: string } {
+  initStore();
+  const ws = ensureWorkspace(ownerId());
+  if (!ws.trips[id]) return { error: "Trip not found." };
+  if (Object.keys(ws.trips).length <= 1) {
+    return { error: "Keep at least one trip. Clear it instead." };
+  }
+  delete ws.trips[id];
+  if (ws.activeTripId === id) {
+    const next = Object.values(ws.trips).sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt),
+    )[0];
+    ws.activeTripId = next.id;
+  }
+  save();
+  return { ok: true };
 }

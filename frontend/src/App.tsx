@@ -26,6 +26,7 @@ import { SettlementLog } from "./components/SettlementLog";
 import { InsightsPanel, SharePlanButton } from "./components/SharePlan";
 import { Stepper } from "./components/Stepper";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { TripSwitcher } from "./components/TripSwitcher";
 import { countryFlag, RAIL_META } from "./lib/theme";
 
 export default function App() {
@@ -88,10 +89,17 @@ export default function App() {
     void (async () => {
       try {
         let u = await client.me();
-        // GitHub Pages has no API — open the sample trip instead of a login wall.
+        // GitHub Pages has no API — open a demo session. Seed only on a
+        // first visit so later trips stay on this device.
         if (!u && isStaticEngine) {
+          let hadDb = false;
+          try {
+            hadDb = localStorage.getItem("litefx-db") != null;
+          } catch {
+            /* private mode */
+          }
           u = await client.demo();
-          await client.seed();
+          if (!hadDb) await client.seed();
         }
         setUser(u);
       } catch {
@@ -360,7 +368,7 @@ export default function App() {
     setLoading("reset");
     try {
       await client.seed();
-      notify("Reset to sample trip");
+      notify("Sample trip loaded into this trip");
       setEditEntityId(null);
       setEditExpenseId(null);
       setClaimModalToken(null);
@@ -375,6 +383,73 @@ export default function App() {
       setLoading(null);
     }
   };
+
+  const switchTripView = useCallback(async () => {
+    setEditEntityId(null);
+    setEditExpenseId(null);
+    setClaimModalToken(null);
+    setDetailId(null);
+    await fetchScenario();
+  }, [fetchScenario]);
+
+  const handleSelectTrip = useCallback(
+    async (id: string) => {
+      try {
+        await client.selectTrip(id);
+        await switchTripView();
+        notify("Opened trip");
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [notify, switchTripView],
+  );
+
+  const handleCreateTrip = useCallback(
+    async (name: string) => {
+      try {
+        await client.createTrip(name);
+        await switchTripView();
+        notify(`Started ${name.trim()}`);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [notify, switchTripView],
+  );
+
+  const handleRenameTrip = useCallback(
+    async (id: string, name: string) => {
+      try {
+        await client.renameTrip(id, name);
+        await fetchScenario();
+        notify("Trip renamed");
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [fetchScenario, notify],
+  );
+
+  const handleDeleteTrip = useCallback(
+    async (id: string) => {
+      if (
+        !window.confirm(
+          "Delete this trip and its expenses? Other trips are kept.",
+        )
+      ) {
+        return;
+      }
+      try {
+        await client.deleteTrip(id);
+        await switchTripView();
+        notify("Trip deleted");
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [notify, switchTripView],
+  );
 
   const handleLogout = useCallback(async () => {
     try {
@@ -568,7 +643,18 @@ export default function App() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
             <LogoMark size={32} />
-            <Wordmark className="text-[1.15rem]" />
+            <Wordmark className="hidden text-[1.15rem] sm:inline" />
+            {scenario && (
+              <TripSwitcher
+                trip={scenario.trip}
+                trips={scenario.trips ?? []}
+                busy={loading !== null}
+                onSelect={(id) => void handleSelectTrip(id)}
+                onCreate={(name) => void handleCreateTrip(name)}
+                onRename={(id, name) => void handleRenameTrip(id, name)}
+                onDelete={(id) => void handleDeleteTrip(id)}
+              />
+            )}
           </div>
           <div className="flex items-center gap-1">
             {headerAction && (
@@ -616,6 +702,10 @@ export default function App() {
 
         {tripEmpty && (
           <HeroIntro
+            tripName={scenario.trip?.name ?? "New trip"}
+            onRename={(name) => {
+              if (scenario.trip) void handleRenameTrip(scenario.trip.id, name);
+            }}
             onStart={() => setTravelerSignal((s) => s + 1)}
             onSample={handleLoadSample}
           />
@@ -811,21 +901,47 @@ export default function App() {
 /* ── Small presentational pieces ─────────────────── */
 
 function HeroIntro({
+  tripName,
+  onRename,
   onStart,
   onSample,
 }: {
+  tripName: string;
+  onRename: (name: string) => void;
   onStart: () => void;
   onSample: () => void;
 }) {
+  const [name, setName] = useState(tripName);
+  useEffect(() => setName(tripName), [tripName]);
   return (
     <section className="glass animate-fade-in-up rounded-2xl p-6 sm:p-8">
       <h1 className="text-slate-50 font-display text-[1.85rem] leading-[1.15] font-semibold sm:text-[2.15rem]">
         Start a trip
       </h1>
       <p className="text-slate-400 mt-2.5 max-w-lg text-[15px] leading-7">
-        Add travelers and expenses. LiteFX nets debts into the fewest transfers
-        and picks a rail for each one.
+        Name it, add travelers and expenses. LiteFX nets debts into the fewest
+        transfers and picks a rail for each one. Past trips stay in the header.
       </p>
+      <label className="mt-4 block">
+        <span className="text-slate-500 text-[11px] font-medium tracking-wide uppercase">
+          Trip name
+        </span>
+        <input
+          value={name}
+          maxLength={80}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => {
+            const next = name.trim();
+            if (next && next !== tripName) onRename(next);
+            else setName(tripName);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          className="text-slate-100 mt-1.5 w-full max-w-sm rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          placeholder="Tokyo 2026"
+        />
+      </label>
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" onClick={onStart} className="btn-primary">
           Add a traveler

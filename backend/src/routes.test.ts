@@ -526,3 +526,39 @@ test("POST /entities/:id/link-account turns Eve's claim into local PayNow", asyn
   );
   assert.equal(eve.chosenRail, "local");
 });
+
+test("trips can be created, renamed, switched, and listed in scenario", async () => {
+  const created = await json("/trips", {
+    method: "POST",
+    body: JSON.stringify({ name: "Tokyo 2026" }),
+  });
+  assert.equal(created.status, 200, created.body.message);
+  assert.equal(created.body.trip.name, "Tokyo 2026");
+  assert.equal(created.body.trips.length, 2);
+
+  const scenario = await json("/scenario");
+  assert.equal(scenario.body.trip.name, "Tokyo 2026");
+  assert.equal(scenario.body.entities.length, 0);
+
+  const renamed = await json(`/trips/${created.body.trip.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name: "Osaka weekend" }),
+  });
+  assert.equal(renamed.status, 200, renamed.body.message);
+  assert.equal(renamed.body.trip.name, "Osaka weekend");
+
+  const other = renamed.body.trips.find(
+    (t: { id: string }) => t.id !== created.body.trip.id,
+  );
+  assert.ok(other);
+  const selected = await json(`/trips/${other.id}/select`, { method: "POST" });
+  assert.equal(selected.status, 200);
+  const opened = await json("/scenario");
+  assert.equal(opened.body.trip.id, other.id);
+
+  const removed = await json(`/trips/${created.body.trip.id}`, {
+    method: "DELETE",
+  });
+  assert.equal(removed.status, 200, removed.body.message);
+  assert.equal(removed.body.trips.length, 1);
+});

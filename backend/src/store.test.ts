@@ -3,14 +3,22 @@ import { afterEach, test } from "node:test";
 import {
   addExpense,
   addEntity,
-  clearStore,
   deleteEntity,
   deleteExpense,
+  createTrip,
+  currentTripSummary,
+  deleteTrip,
   getStore,
+  listTripSummaries,
+  normalizeApp,
   refreshDerivedForFx,
+  renameTrip,
+  resetApp,
   seedStore,
+  selectTrip,
   updateEntity,
   updateExpense,
+  withClaimTrip,
 } from "./store.js";
 import { expense, loadTrip, traveler } from "./testUtil.js";
 import { runNetting } from "./agents/netting.js";
@@ -18,7 +26,7 @@ import { runRouting } from "./agents/railRouter.js";
 import { settleObligation } from "./agents/claimLink.js";
 
 afterEach(() => {
-  clearStore();
+  resetApp();
 });
 
 test("equal split remainder goes to the payer so shares still sum", () => {
@@ -363,4 +371,68 @@ test("editing an expense amount recomputes debts and clears nets", () => {
   updateExpense(exp.id, { ...exp, amount: 80 });
   assert.equal(getStore().netObligations.length, 0);
   assert.equal(getStore().debtEdges[0]?.amountUsd, 40);
+});
+
+test("named trips stay isolated and claim links follow the source trip", () => {
+  seedStore();
+  runNetting();
+  runRouting();
+  const bangkok = currentTripSummary();
+  assert.equal(bangkok.name, "Bangkok Trip 2026");
+  const claimOb = getStore().netObligations.find(
+    (o) => o.chosenRail === "claim_link",
+  );
+  assert.ok(claimOb);
+  const issued = settleObligation(claimOb.id);
+  assert.ok(issued.link?.token);
+
+  const created = createTrip("Tokyo 2026");
+  assert.equal("id" in created, true);
+  assert.equal(getStore().entities.length, 0);
+  assert.equal(getStore().claimLinks.length, 0);
+  assert.equal(listTripSummaries().length, 2);
+
+  const claimed = withClaimTrip(issued.link.token, () => getStore());
+  assert.ok(claimed);
+  assert.equal(claimed.entities.length, 6);
+  assert.ok(claimed.claimLinks.some((c) => c.token === issued.link?.token));
+
+  assert.equal(selectTrip(bangkok.id), true);
+  assert.equal(getStore().entities.length, 6);
+  const renamed = renameTrip(bangkok.id, "Bangkok with friends");
+  assert.equal("error" in renamed, false);
+  assert.equal(currentTripSummary().name, "Bangkok with friends");
+  assert.equal("ok" in deleteTrip((created as { id: string }).id), true);
+  assert.equal(listTripSummaries().length, 1);
+  assert.equal("error" in deleteTrip(bangkok.id), true);
+});
+
+test("normalizeApp migrates a v2 single-trip file", () => {
+  const migrated = normalizeApp({
+    version: 2,
+    users: [],
+    sessions: [],
+    trips: {
+      "user-local": {
+        entities: [{ id: "a", name: "Ada", country: "US" }],
+        expenses: [
+          {
+            id: "e1",
+            payerId: "a",
+            participantIds: ["a"],
+            amount: 10,
+            currency: "USD",
+            tripId: "t",
+            category: "food",
+            description: "Pad thai in Bangkok",
+          },
+        ],
+      },
+    },
+  });
+  assert.ok(migrated);
+  const ws = migrated.workspaces["user-local"];
+  const trip = Object.values(ws.trips)[0];
+  assert.equal(trip.name, "Bangkok Trip 2026");
+  assert.equal(trip.entities.length, 1);
 });

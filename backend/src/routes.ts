@@ -12,12 +12,18 @@ import {
   deleteEntity,
   getClaimLink,
   findClaimOwner,
-  runAsUser,
+  withClaimTrip,
   validateExpenseSplit,
   addUser,
   toPublicUser,
   deleteSessionByTokenHash,
   persistenceStatus,
+  listTripSummaries,
+  currentTripSummary,
+  createTrip,
+  selectTrip,
+  renameTrip,
+  deleteTrip,
 } from "./store";
 import { FX_TABLE } from "./types";
 import type { Expense } from "./types";
@@ -278,6 +284,8 @@ function tripCurrencies(): string[] {
 apiRouter.get("/scenario", (_req, res) => {
   const store = getStore();
   res.json({
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
     entities: store.entities,
     expenses: store.expenses,
     debtEdges: store.debtEdges,
@@ -585,13 +593,9 @@ apiRouter.post("/settlement/:id/settle", (req, res) => {
 // ── GET /api/claim/:token — get claim link details ──
 apiRouter.get("/claim/:token", (req, res) => {
   const token = req.params.token;
-  const owner = findClaimOwner(token);
-  const link = getClaimLink(token);
-  if (!link || !owner) {
-    res.status(404).json({ success: false, message: "Claim link not found." });
-    return;
-  }
-  runAsUser(owner, () => {
+  const result = withClaimTrip(token, () => {
+    const link = getClaimLink(token);
+    if (!link) return null;
     if (link.status === "pending" && new Date(link.expiresAt) < new Date()) {
       updateClaimLink(link.token, { status: "expired" });
       link.status = "expired";
@@ -601,19 +605,24 @@ apiRouter.get("/claim/:token", (req, res) => {
     const obligation = store.netObligations.find(
       (o) => o.id === link.obligationId,
     );
-    if (!recipient || !obligation) {
-      res
-        .status(404)
-        .json({ success: false, message: "Claim link is no longer valid." });
-      return;
-    }
-    res.json({
+    if (!recipient || !obligation) return null;
+    return {
       link,
       recipient,
       obligation,
       payoutOptions: payoutOptionsFor(recipient.country),
-    });
+    };
   });
+  if (!result) {
+    res.status(404).json({
+      success: false,
+      message: findClaimOwner(token)
+        ? "Claim link is no longer valid."
+        : "Claim link not found.",
+    });
+    return;
+  }
+  res.json(result);
 });
 
 // ── POST /api/claim/:token/claim — claim with a payout method ──
@@ -632,14 +641,13 @@ apiRouter.post("/claim/:token/claim", (req, res) => {
       .json({ success: false, message: "payoutMethod is required." });
     return;
   }
-  const owner = findClaimOwner(req.params.token);
-  if (!owner) {
+  const result = withClaimTrip(req.params.token, () =>
+    claimWithPayoutMethod(req.params.token, payoutMethod),
+  );
+  if (!result) {
     res.status(404).json({ success: false, message: "Claim link not found." });
     return;
   }
-  const result = runAsUser(owner, () =>
-    claimWithPayoutMethod(req.params.token, payoutMethod),
-  );
   if (!result.success) {
     const status = /not found|no longer valid/i.test(result.message)
       ? 404
@@ -665,4 +673,60 @@ apiRouter.post("/clear", (_req, res) => {
 apiRouter.post("/seed", (_req, res) => {
   seedStore();
   res.json({ success: true, message: "Sample trip loaded." });
+});
+
+apiRouter.post("/trips", (req, res) => {
+  const result = createTrip((req.body as { name?: string })?.name);
+  if ("error" in result) {
+    res.status(400).json({ success: false, message: result.error });
+    return;
+  }
+  res.json({
+    success: true,
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
+  });
+});
+
+apiRouter.post("/trips/:id/select", (req, res) => {
+  if (!selectTrip(req.params.id)) {
+    res.status(404).json({ success: false, message: "Trip not found." });
+    return;
+  }
+  res.json({
+    success: true,
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
+  });
+});
+
+apiRouter.patch("/trips/:id", (req, res) => {
+  const result = renameTrip(
+    req.params.id,
+    (req.body as { name?: string })?.name ?? "",
+  );
+  if ("error" in result) {
+    const status = result.error === "Trip not found." ? 404 : 400;
+    res.status(status).json({ success: false, message: result.error });
+    return;
+  }
+  res.json({
+    success: true,
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
+  });
+});
+
+apiRouter.delete("/trips/:id", (req, res) => {
+  const result = deleteTrip(req.params.id);
+  if ("error" in result) {
+    const status = result.error === "Trip not found." ? 404 : 400;
+    res.status(status).json({ success: false, message: result.error });
+    return;
+  }
+  res.json({
+    success: true,
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
+  });
 });

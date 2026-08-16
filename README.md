@@ -31,7 +31,7 @@ Without `DATABASE_URL`, the server still runs and falls back to JSON. Render’s
 
 ## Demo Flow (under 2 minutes)
 
-1. **Open the sample trip** — 6 travelers across Singapore, Thailand, the US, and Germany.
+1. **Open or name a trip** — start a blank one, or load the sample (6 travelers across Singapore, Thailand, the US, and Germany). Past trips stay in the header.
 2. **Type an expense title** — “Grab to the airport” classifies as Transport before you pick a category.
 3. **Click Net & route** — pairwise IOUs collapse into a handful of transfers, each with a rail and fee.
 4. **Open a transfer → Try another rail** — switch a PromptPay (0%) payout to USDC (1.5%) and watch the fee jump.
@@ -53,7 +53,7 @@ LiteFX/
 ├── backend/src/
 │   ├── index.ts              # Express (port 3001), CORS, compiled start
 │   ├── auth.ts               # Sessions, CSRF, rate limits
-│   ├── store.ts              # Per-user trips; JSON or Postgres
+│   ├── store.ts              # Per-user named trips; JSON or Postgres
 │   ├── postgres.ts           # Free Neon adapter
 │   ├── fx.ts                 # Live frankfurter rates + snapshot
 │   ├── routes.ts             # HTTP API
@@ -82,8 +82,12 @@ Protected routes need a session cookie. Browser clients also send `X-LiteFX-Requ
 | GET | `/api/health` | Public |
 | POST | `/api/auth/signup` `/login` `/logout` `/demo` | Demo is off in production unless `ENABLE_DEMO_AUTH=true` |
 | GET | `/api/auth/me` | |
-| GET | `/api/scenario` | Trip, debts, nets, ledger, FX, plan |
-| POST | `/api/seed` `/clear` | Sample trip / blank trip |
+| GET | `/api/scenario` | Active trip, trip list, debts, nets, ledger, FX, plan |
+| POST | `/api/seed` `/clear` | Sample / blank the **active** trip |
+| POST | `/api/trips` | Create a named trip and switch to it |
+| POST | `/api/trips/:id/select` | Switch active trip |
+| PATCH | `/api/trips/:id` | Rename |
+| DELETE | `/api/trips/:id` | Delete (keeps at least one) |
 | POST/PATCH/DELETE | `/api/entities` `/api/expenses` | Title classifies category when omitted |
 | POST | `/api/engine/run` | Net + route; 409 if already netted |
 | POST | `/api/obligations/:id/rail` | Override rail |

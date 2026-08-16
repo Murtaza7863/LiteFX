@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from "pg";
 import type { AppState, SessionRecord, UserRecord } from "./store.js";
 
 export interface PostgresPersistence {
-  load(): Promise<AppState | null>;
+  load(): Promise<unknown>;
   save(state: AppState): Promise<void>;
 }
 
@@ -142,11 +142,13 @@ export async function createPostgresPersistence(
               ],
             );
           }
-          for (const [ownerId, trip] of Object.entries(snapshot.trips)) {
+          for (const [ownerId, workspace] of Object.entries(
+            snapshot.workspaces,
+          )) {
             await client.query(
               `INSERT INTO litefx_trips (owner_id, state, updated_at)
                VALUES ($1, $2::jsonb, NOW())`,
-              [ownerId, JSON.stringify(trip)],
+              [ownerId, JSON.stringify(workspace)],
             );
           }
           await client.query("COMMIT");
