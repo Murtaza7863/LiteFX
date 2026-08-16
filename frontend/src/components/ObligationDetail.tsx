@@ -133,6 +133,27 @@ export function ObligationDetail({
           </div>
         </div>
 
+        {obligation.amount > 0 && (
+          <p className="text-slate-500 mb-4 text-[12px]">
+            {obligation.amount.toLocaleString(undefined, {
+              maximumFractionDigits: 2,
+            })}{" "}
+            {obligation.settlementCurrency}
+            {" → "}${obligation.amountUsd.toFixed(2)} USD
+            {obligation.settlementCurrency !== "USD" && (
+              <span>
+                {" · "}1 {obligation.settlementCurrency} = $
+                {(obligation.amountUsd / obligation.amount).toFixed(4)}
+              </span>
+            )}
+            {(obligation.feeUsd ?? 0) > 0 && (
+              <span>
+                {" · "}fee ${obligation.feeUsd!.toFixed(2)}
+              </span>
+            )}
+          </p>
+        )}
+
         <div className="bg-black/25 border-white/[0.04] mb-4 rounded-lg border px-3 py-2.5">
           <div className="mb-1 flex items-center justify-between gap-2">
             <p className="text-slate-500 text-[10px] font-semibold tracking-wider uppercase">

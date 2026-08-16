@@ -16,6 +16,7 @@ export interface Entity {
   country: string; // ISO 3166-1 alpha-2: SG, TH, US, DE
   contact: { type: "email" | "phone"; value: string };
   linkedRailAliases: RailAlias[]; // empty if the recipient has no account
+  contactId?: string;
 }
 
 export interface ExpenseSplit {

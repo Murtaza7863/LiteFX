@@ -33,28 +33,35 @@ import {
   settleObligation,
 } from "../../../backend/src/agents/claimLink";
 import {
-  addEntity,
+  addEntityFromContact,
   addExpense,
   addUser,
   clearStore,
+  createTraveler,
   createTrip,
   currentTripSummary,
+  deleteContact,
   deleteEntity,
   deleteExpense,
   deleteTrip,
+  duplicateTrip,
   findUserByEmail,
   findUserById,
   getClaimLink,
   getStore,
   initStore,
+  listContacts,
   listTripSummaries,
   loadSampleTrip,
   refreshDerivedForFx,
   renameTrip,
+  rememberTraveler,
   runAsUser,
+  saveTripCrew,
   seedStore,
   selectTrip,
   toPublicUser,
+  travelerOnTrip,
   updateClaimLink,
   updateEntity,
   updateExpense,
@@ -124,6 +131,7 @@ function scenario(): ScenarioResponse {
   return {
     trip: currentTripSummary(),
     trips: listTripSummaries(),
+    contacts: listContacts(),
     entities: store.entities,
     expenses: store.expenses,
     debtEdges: store.debtEdges,
@@ -362,14 +370,20 @@ export const staticClient = {
     return { success: true, message: "Sample trip loaded." };
   },
   addEntity: async (body: {
-    name: string;
-    country: string;
+    name?: string;
+    country?: string;
     railType?: string;
     alias?: string;
     contact?: { type: "email" | "phone"; value: string };
+    contactId?: string;
   }) => {
     await boot();
     return asUser(() => {
+      if (body.contactId) {
+        const result = addEntityFromContact(body.contactId);
+        if ("error" in result) throw new Error(result.error);
+        return { success: true, entity: result };
+      }
       const name = (body.name ?? "").trim();
       if (!name || !body.country) {
         throw new Error("name and country are required.");
@@ -384,7 +398,7 @@ export const staticClient = {
       if (body.railType?.trim() && !rail) {
         throw new Error("Unsupported settlement rail.");
       }
-      const entity: Entity = {
+      const result = createTraveler({
         id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
         name,
         country: body.country,
@@ -392,9 +406,9 @@ export const staticClient = {
         linkedRailAliases: rail
           ? [{ railType: rail, alias: body.alias || "" }]
           : [],
-      };
-      addEntity(entity as Parameters<typeof addEntity>[0]);
-      return { success: true, entity };
+      });
+      if ("error" in result) throw new Error(result.error);
+      return { success: true, entity: result };
     });
   },
   addExpense: async (body: ExpenseBody) => {
@@ -436,6 +450,11 @@ export const staticClient = {
         patch.name = trimmed;
       }
       if (body.country !== undefined) patch.country = body.country;
+      const nextName = patch.name ?? existing.name;
+      const nextCountry = patch.country ?? existing.country;
+      if (travelerOnTrip(nextName, nextCountry, existing.id)) {
+        throw new Error(`${nextName.trim()} is already on this trip.`);
+      }
       if (body.contact !== undefined) {
         patch.contact = validContact(body.contact);
       }
@@ -469,8 +488,9 @@ export const staticClient = {
             ]
           : [];
       }
-      const entity = updateEntity(id, patch);
-      if (!entity) throw new Error("Traveler not found.");
+      const updated = updateEntity(id, patch);
+      if (!updated) throw new Error("Traveler not found.");
+      const entity = rememberTraveler(updated);
       if (
         patch.linkedRailAliases &&
         getStore().netObligations.some((o) => o.status !== "settled")
@@ -545,6 +565,33 @@ export const staticClient = {
         trips: listTripSummaries(),
       };
     });
+  },
+  duplicateTrip: async (id: string) => {
+    await boot();
+    return asUser(() => {
+      const result = duplicateTrip(id);
+      if ("error" in result) throw new Error(result.error);
+      return {
+        success: true as const,
+        trip: currentTripSummary(),
+        trips: listTripSummaries(),
+      };
+    });
+  },
+  deleteContact: async (id: string) => {
+    await boot();
+    return asUser(() => {
+      if (!deleteContact(id)) throw new Error("Saved person not found.");
+      return { success: true as const, contacts: listContacts() };
+    });
+  },
+  saveCrew: async () => {
+    await boot();
+    return asUser(() => ({
+      success: true as const,
+      contacts: saveTripCrew(),
+      entities: getStore().entities,
+    }));
   },
   me: async (): Promise<User | null> => {
     await boot();

@@ -28,6 +28,7 @@ export function SettlementLog({
                 hour: "numeric",
                 minute: "2-digit",
               })}
+              {" · "}LiteFX {l.obligationId}
             </p>
           </div>
           <div className="text-right">

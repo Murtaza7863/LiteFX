@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "npx tsc --noEmit && npx tsx --test src/lib/paymentSlip.test.ts"
+    "test": "npx tsc --noEmit && npx tsx --test src/lib/paymentSlip.test.ts src/lib/tripMath.test.ts"
   },
   "dependencies": {
     "react": "^18.2.0",

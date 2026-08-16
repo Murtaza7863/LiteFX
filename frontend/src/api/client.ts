@@ -9,6 +9,17 @@ export interface Entity {
   country: string;
   contact: { type: string; value: string };
   linkedRailAliases: { railType: string; alias: string }[];
+  contactId?: string;
+}
+
+export interface SavedContact {
+  id: string;
+  name: string;
+  country: string;
+  contact: { type: string; value: string };
+  linkedRailAliases: { railType: string; alias: string }[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Expense {
@@ -157,6 +168,7 @@ export interface TripSummary {
 export interface ScenarioResponse {
   trip?: TripSummary;
   trips?: TripSummary[];
+  contacts?: SavedContact[];
   entities: Entity[];
   expenses: Expense[];
   debtEdges: DebtEdge[];
@@ -273,11 +285,12 @@ export const httpClient = {
   seed: (opts?: { asNew?: boolean }) =>
     api<{ success: boolean; message: string }>("/seed", "POST", opts),
   addEntity: (body: {
-    name: string;
-    country: string;
+    name?: string;
+    country?: string;
     railType?: string;
     alias?: string;
     contact?: { type: "email" | "phone"; value: string };
+    contactId?: string;
   }) => api<{ success: boolean; entity: Entity }>("/entities", "POST", body),
   addExpense: (body: {
     payerId: string;
@@ -347,6 +360,21 @@ export const httpClient = {
     api<{ success: boolean; trip: TripSummary; trips: TripSummary[] }>(
       `/trips/${id}`,
       "DELETE",
+    ),
+  duplicateTrip: (id: string) =>
+    api<{ success: boolean; trip: TripSummary; trips: TripSummary[] }>(
+      `/trips/${id}/duplicate`,
+      "POST",
+    ),
+  deleteContact: (id: string) =>
+    api<{ success: boolean; contacts: SavedContact[] }>(
+      `/contacts/${id}`,
+      "DELETE",
+    ),
+  saveCrew: () =>
+    api<{ success: boolean; contacts: SavedContact[]; entities: Entity[] }>(
+      "/contacts/save-crew",
+      "POST",
     ),
   me: async (): Promise<User | null> => {
     try {

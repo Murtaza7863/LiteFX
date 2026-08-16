@@ -1,20 +1,26 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
+  addEntityFromContact,
   addExpense,
   addEntity,
   deleteEntity,
   deleteExpense,
+  createTraveler,
   createTrip,
   currentTripSummary,
+  deleteContact,
   deleteTrip,
+  duplicateTrip,
   getStore,
+  listContacts,
   listTripSummaries,
   loadSampleTrip,
   normalizeApp,
   refreshDerivedForFx,
   renameTrip,
   resetApp,
+  saveTripCrew,
   seedStore,
   selectTrip,
   updateEntity,
@@ -23,7 +29,7 @@ import {
 } from "./store.js";
 import { expense, loadTrip, traveler } from "./testUtil.js";
 import { runNetting } from "./agents/netting.js";
-import { runRouting } from "./agents/railRouter.js";
+import { linkRecipientAccount, runRouting } from "./agents/railRouter.js";
 import { settleObligation, claimWithPayoutMethod } from "./agents/claimLink.js";
 
 afterEach(() => {
@@ -434,6 +440,135 @@ test("loading the sample as a new trip keeps the one you were editing", () => {
   assert.equal((extra as { name: string }).name, "New trip");
   const extra2 = createTrip("New trip");
   assert.equal((extra2 as { name: string }).name, "New trip (2)");
+});
+
+test("travelers are saved as contacts and can be added to a later trip", () => {
+  const added = createTraveler({
+    id: "ent-sam",
+    name: "Sam",
+    country: "US",
+    contact: { type: "email", value: "sam@x.test" },
+    linkedRailAliases: [{ railType: "Zelle", alias: "sam" }],
+  });
+  assert.equal("id" in added, true);
+  assert.equal(listContacts().length, 1);
+  const dup = createTraveler({
+    id: "ent-sam-2",
+    name: "Sam",
+    country: "US",
+    contact: { type: "email", value: "sam@x.test" },
+    linkedRailAliases: [],
+  });
+  assert.equal("error" in dup, true);
+
+  createTrip("Next weekend");
+  assert.equal(getStore().entities.length, 0);
+  const fromBook = addEntityFromContact(listContacts()[0].id);
+  assert.equal("id" in fromBook, true);
+  assert.equal((fromBook as { name: string }).name, "Sam");
+  assert.equal(getStore().entities.length, 1);
+  assert.equal(deleteContact(listContacts()[0].id), true);
+  assert.equal(listContacts().length, 0);
+  assert.equal(getStore().entities[0].name, "Sam");
+});
+
+test("duplicate trip copies people and expenses but not nets", () => {
+  seedStore();
+  runNetting();
+  const srcId = getStore().id;
+  const copy = duplicateTrip(srcId);
+  assert.equal("error" in copy, false);
+  assert.match(getStore().name, /copy/i);
+  assert.equal(getStore().entities.length, 6);
+  assert.equal(getStore().expenses.length > 0, true);
+  assert.equal(getStore().netObligations.length, 0);
+  assert.notEqual(getStore().id, srcId);
+});
+
+test("duplicate trip remaps custom split parts and clips long names", () => {
+  const long = "T".repeat(80);
+  const renamed = renameTrip(getStore().id, long);
+  assert.equal("error" in renamed, false);
+  addEntity(traveler("a", "Ada", "US"));
+  addEntity(traveler("b", "Ben", "SG"));
+  addExpense(
+    expense({
+      id: "e-split",
+      payerId: "a",
+      participantIds: ["a", "b"],
+      amount: 100,
+      split: { mode: "percent", parts: { a: 40, b: 60 } },
+    }),
+  );
+  const copy = duplicateTrip();
+  assert.equal("error" in copy, false);
+  const dest = copy as {
+    name: string;
+    expenses: { split?: { parts?: Record<string, number> } }[];
+    entities: { id: string }[];
+  };
+  assert.ok(dest.name.length <= 80);
+  assert.match(dest.name, /copy/i);
+  const parts = dest.expenses[0]?.split?.parts ?? {};
+  assert.equal(Object.keys(parts).includes("a"), false);
+  assert.equal(
+    Object.values(parts).reduce((s, n) => s + n, 0),
+    100,
+  );
+});
+
+test("a full contact book still lets you add a traveler to the trip", () => {
+  for (let i = 0; i < 80; i++) {
+    const added = createTraveler({
+      id: `ent-fill-${i}`,
+      name: `Person ${i}`,
+      country: "US",
+      contact: { type: "email", value: `p${i}@x.test` },
+      linkedRailAliases: [],
+    });
+    assert.equal("id" in added, true, `failed at ${i}`);
+  }
+  assert.equal(listContacts().length, 80);
+  const extra = createTraveler({
+    id: "ent-extra",
+    name: "Extra",
+    country: "US",
+    contact: { type: "email", value: "extra@x.test" },
+    linkedRailAliases: [],
+  });
+  assert.equal("id" in extra, true);
+  assert.equal(listContacts().length, 80);
+  assert.equal(
+    getStore().entities.some((e) => e.name === "Extra"),
+    true,
+  );
+});
+
+test("linking a traveler saves them with the new rail for later trips", () => {
+  seedStore();
+  assert.equal(listContacts().length, 0);
+  const eve = linkRecipientAccount("ent-eve");
+  assert.equal(eve.linkedRailAliases[0]?.railType, "PayNow");
+  assert.ok(eve.contactId);
+  assert.equal(listContacts().length, 1);
+  assert.equal(listContacts()[0].linkedRailAliases[0]?.railType, "PayNow");
+
+  createTrip("Next weekend");
+  const added = addEntityFromContact(listContacts()[0].id);
+  assert.equal("id" in added, true);
+  assert.equal(
+    (added as { linkedRailAliases: { railType: string }[] })
+      .linkedRailAliases[0]?.railType,
+    "PayNow",
+  );
+});
+
+test("saveTripCrew remembers the sample people without duplicating", () => {
+  seedStore();
+  const first = saveTripCrew();
+  assert.equal(first.length, 6);
+  assert.equal(saveTripCrew().length, 6);
+  assert.ok(getStore().entities.every((e) => e.contactId));
 });
 
 test("normalizeApp migrates a v2 single-trip file", () => {

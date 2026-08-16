@@ -11,7 +11,7 @@ html.dark {
   --muted: #8a8378;
   --border: rgba(238, 232, 223, 0.12);
   --elev: #1e1b18;
-  --input-bg: #1e1b18;
+  --input-bg: #2a2622;
   --graph-pill: #1e1b18;
   --accent: #eee8df;
   --btn: #eee8df;
@@ -28,7 +28,7 @@ html.light {
   --muted: #6b645a;
   --border: rgba(28, 25, 23, 0.12);
   --elev: #faf7f1;
-  --input-bg: #faf7f1;
+  --input-bg: #ffffff;
   --graph-pill: #faf7f1;
   --accent: #1c1917;
   --btn: #1c1917;
@@ -93,6 +93,7 @@ html.light .border-white\/\[0\.08\],
 html.light .border-white\/\[0\.12\] {
   border-color: rgba(28, 25, 23, 0.12);
 }
+html.light .bg-black\/20,
 html.light .bg-black\/25,
 html.light .bg-black\/30 {
   background-color: rgba(28, 25, 23, 0.04);
@@ -144,7 +145,7 @@ html.light .bg-slate-900 {
   .input-field {
     @apply w-full rounded-lg px-3.5 py-2.5 text-sm font-medium focus:outline-none;
     background: var(--input-bg);
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
     color: var(--text);
   }
   .input-field:focus {

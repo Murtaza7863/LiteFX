@@ -3,7 +3,6 @@ import {
   getStore,
   seedStore,
   updateClaimLink,
-  addEntity,
   addExpense,
   updateEntity,
   updateExpense,
@@ -20,8 +19,16 @@ import {
   persistenceStatus,
   loadSampleTrip,
   listTripSummaries,
+  listContacts,
   currentTripSummary,
   createTrip,
+  createTraveler,
+  addEntityFromContact,
+  travelerOnTrip,
+  rememberTraveler,
+  saveTripCrew,
+  deleteContact,
+  duplicateTrip,
   selectTrip,
   renameTrip,
   deleteTrip,
@@ -287,6 +294,7 @@ apiRouter.get("/scenario", (_req, res) => {
   res.json({
     trip: currentTripSummary(),
     trips: listTripSummaries(),
+    contacts: listContacts(),
     entities: store.entities,
     expenses: store.expenses,
     debtEdges: store.debtEdges,
@@ -313,13 +321,29 @@ apiRouter.post("/entities", (req, res) => {
     contact,
     railType,
     alias,
+    contactId,
   } = req.body as {
     name?: string;
     country?: string;
     contact?: { type: string; value: string };
     railType?: string;
     alias?: string;
+    contactId?: string;
   };
+  if (contactId) {
+    const result = addEntityFromContact(contactId);
+    if ("error" in result) {
+      const status = result.error.includes("already")
+        ? 409
+        : result.error.includes("not found")
+          ? 404
+          : 400;
+      res.status(status).json({ success: false, message: result.error });
+      return;
+    }
+    res.json({ success: true, entity: result });
+    return;
+  }
   const name = (nameRaw ?? "").trim();
   if (!name || !country) {
     res
@@ -348,15 +372,19 @@ apiRouter.post("/entities", (req, res) => {
     res.status(400).json({ success: false, message: parsedContact.error });
     return;
   }
-  const entity = {
+  const result = createTraveler({
     id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
     name,
     country,
     contact: parsedContact,
     linkedRailAliases: rail ? [{ railType: rail, alias: alias || "" }] : [],
-  };
-  addEntity(entity);
-  res.json({ success: true, entity });
+  });
+  if ("error" in result) {
+    const status = result.error.includes("already") ? 409 : 400;
+    res.status(status).json({ success: false, message: result.error });
+    return;
+  }
+  res.json({ success: true, entity: result });
 });
 
 // ── PATCH /api/entities/:id — edit a traveler ──
@@ -388,6 +416,15 @@ apiRouter.patch("/entities/:id", (req, res) => {
     patch.name = trimmed;
   }
   if (country !== undefined) patch.country = country;
+  const nextName = patch.name ?? existing.name;
+  const nextCountry = patch.country ?? existing.country;
+  if (travelerOnTrip(nextName, nextCountry, existing.id)) {
+    res.status(409).json({
+      success: false,
+      message: `${nextName.trim()} is already on this trip.`,
+    });
+    return;
+  }
   if (contact !== undefined) {
     const parsedContact = parseContact(contact);
     if ("error" in parsedContact) {
@@ -426,7 +463,12 @@ apiRouter.patch("/entities/:id", (req, res) => {
         ]
       : [];
   }
-  const entity = updateEntity(req.params.id, patch);
+  const updated = updateEntity(req.params.id, patch);
+  if (!updated) {
+    res.status(404).json({ success: false, message: "Traveler not found." });
+    return;
+  }
+  const entity = rememberTraveler(updated);
   if (
     patch.linkedRailAliases &&
     getStore().netObligations.some((o) => o.status !== "settled")
@@ -703,6 +745,20 @@ apiRouter.post("/trips", (req, res) => {
   });
 });
 
+apiRouter.post("/trips/:id/duplicate", (req, res) => {
+  const result = duplicateTrip(req.params.id);
+  if ("error" in result) {
+    const status = result.error === "Trip not found." ? 404 : 400;
+    res.status(status).json({ success: false, message: result.error });
+    return;
+  }
+  res.json({
+    success: true,
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
+  });
+});
+
 apiRouter.post("/trips/:id/select", (req, res) => {
   if (!selectTrip(req.params.id)) {
     res.status(404).json({ success: false, message: "Trip not found." });
@@ -743,5 +799,27 @@ apiRouter.delete("/trips/:id", (req, res) => {
     success: true,
     trip: currentTripSummary(),
     trips: listTripSummaries(),
+  });
+});
+
+apiRouter.post("/contacts/save-crew", (_req, res) => {
+  const contacts = saveTripCrew();
+  res.json({
+    success: true,
+    contacts,
+    entities: getStore().entities,
+  });
+});
+
+apiRouter.delete("/contacts/:id", (req, res) => {
+  if (!deleteContact(req.params.id)) {
+    res
+      .status(404)
+      .json({ success: false, message: "Saved person not found." });
+    return;
+  }
+  res.json({
+    success: true,
+    contacts: listContacts(),
   });
 });

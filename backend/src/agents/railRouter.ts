@@ -8,6 +8,7 @@ import {
   getEntity,
   getNetObligation,
   getStore,
+  rememberTraveler,
   updateClaimLink,
   updateEntity,
   updateNetObligation,
@@ -222,7 +223,7 @@ export function linkRecipientAccount(entityId: string): Entity {
   rerouteUnsettled({ to: entityId });
   const latest = getEntity(entityId);
   if (!latest) throw new Error("Traveler not found.");
-  return latest;
+  return rememberTraveler(latest);
 }
 
 function buildConsidered(

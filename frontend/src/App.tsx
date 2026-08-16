@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import type {
+  Entity,
   NettingResult,
   RailType,
+  SavedContact,
   ScenarioResponse,
   User,
 } from "./api/client";
@@ -12,7 +20,6 @@ import { client, isStaticEngine } from "./api/client";
 import { AccountMenu } from "./components/AccountMenu";
 import { AddDataForms } from "./components/AddDataForms";
 import { AuthScreen } from "./components/AuthScreen";
-import { Avatar } from "./components/Avatar";
 import { ClaimLinkModal } from "./components/ClaimLinkModal";
 import { Collapsible } from "./components/Collapsible";
 import { DebtGraph } from "./components/DebtGraph";
@@ -21,13 +28,16 @@ import { IconMerge, IconSend, IconChevron } from "./components/icons";
 import { LogoMark, Wordmark } from "./components/Logo";
 import { ObligationCard } from "./components/ObligationCard";
 import { ObligationDetail } from "./components/ObligationDetail";
+import { SavedPeople } from "./components/SavedPeople";
 import { ScenarioOverview } from "./components/ScenarioOverview";
 import { SettlementLog } from "./components/SettlementLog";
 import { InsightsPanel, SharePlanButton } from "./components/SharePlan";
 import { Stepper } from "./components/Stepper";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { TripBooks } from "./components/TripBooks";
 import { TripSwitcher } from "./components/TripSwitcher";
-import { countryFlag, RAIL_META } from "./lib/theme";
+import { RAIL_META } from "./lib/theme";
+import { booksCloseUsd } from "./lib/tripMath";
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -39,6 +49,7 @@ export default function App() {
   const [claimModalToken, setClaimModalToken] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [travelerSignal, setTravelerSignal] = useState(0);
+  const [addingTraveler, setAddingTraveler] = useState(false);
   const [editEntityId, setEditEntityId] = useState<string | null>(null);
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
@@ -49,7 +60,7 @@ export default function App() {
 
   const notify = useCallback((msg: string, kind: "ok" | "warn" = "ok") => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, kind }]);
+    setToasts([{ id, msg, kind }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2800);
   }, []);
 
@@ -113,6 +124,13 @@ export default function App() {
     if (user) void fetchScenario();
   }, [fetchScenario, user]);
 
+  useEffect(() => {
+    if ((scenario?.entities.length ?? 0) > 0) {
+      setAddingTraveler(false);
+      setTravelerSignal(0);
+    }
+  }, [scenario?.entities.length]);
+
   const handleDataAdded = useCallback(
     async (msg: string) => {
       const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
@@ -146,7 +164,7 @@ export default function App() {
       await fetchScenario();
       notify("Cleared — add your own travelers & expenses");
     } catch (e) {
-      setError((e as Error).message);
+      notify((e as Error).message, "warn");
     }
   }, [fetchScenario, notify]);
 
@@ -162,7 +180,7 @@ export default function App() {
       await fetchScenario();
       notify("Sample trip opened");
     } catch (e) {
-      setError((e as Error).message);
+      notify((e as Error).message, "warn");
     }
   }, [fetchScenario, notify]);
 
@@ -177,7 +195,7 @@ export default function App() {
         await fetchScenario();
         notify("Expense removed — debts recomputed");
       } catch (e) {
-        setError((e as Error).message);
+        notify((e as Error).message, "warn");
       }
     },
     [fetchScenario, notify],
@@ -201,7 +219,7 @@ export default function App() {
         await fetchScenario();
         notify("Traveler removed");
       } catch (e) {
-        setError((e as Error).message);
+        notify((e as Error).message, "warn");
       }
     },
     [fetchScenario, notify],
@@ -230,7 +248,7 @@ export default function App() {
       );
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      notify((e as Error).message, "warn");
     } finally {
       setLoading(null);
     }
@@ -259,7 +277,7 @@ export default function App() {
       }
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      notify((e as Error).message, "warn");
     } finally {
       setLoading(null);
     }
@@ -309,7 +327,7 @@ export default function App() {
       notify(bits.join(" · ") || "Done");
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      notify((e as Error).message, "warn");
     } finally {
       setLoading(null);
     }
@@ -327,7 +345,7 @@ export default function App() {
       notify(`Rail switched to ${railName}`);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      notify((e as Error).message, "warn");
     } finally {
       setLoading(null);
     }
@@ -346,7 +364,7 @@ export default function App() {
       notify(`${r.entity.name.trim()} linked ${rail} — transfers re-routed`);
       setError(null);
     } catch (e) {
-      setError((e as Error).message);
+      notify((e as Error).message, "warn");
     } finally {
       setLoading(null);
     }
@@ -426,7 +444,7 @@ export default function App() {
         await fetchScenario();
         notify("Trip renamed");
       } catch (e) {
-        setError((e as Error).message);
+        notify((e as Error).message, "warn");
       }
     },
     [fetchScenario, notify],
@@ -453,6 +471,64 @@ export default function App() {
     },
     [notify, switchTripView],
   );
+
+  const handleDuplicateTrip = useCallback(
+    async (id: string) => {
+      setLoading("trip");
+      try {
+        await client.duplicateTrip(id);
+        await switchTripView();
+        notify("Copied trip — nets not copied, run Net & route again");
+      } catch (e) {
+        setError((e as Error).message);
+        setLoading(null);
+      }
+    },
+    [notify, switchTripView],
+  );
+
+  const handleAddContact = useCallback(
+    async (id: string) => {
+      try {
+        await client.addEntity({ contactId: id });
+        await fetchScenario();
+        notify("Added from saved people");
+      } catch (e) {
+        notify((e as Error).message, "warn");
+      }
+    },
+    [fetchScenario, notify],
+  );
+
+  const handleRemoveContact = useCallback(
+    async (id: string) => {
+      if (
+        !window.confirm(
+          "Remove this person from saved people? They stay on trips they are already on.",
+        )
+      ) {
+        return;
+      }
+      try {
+        await client.deleteContact(id);
+        await fetchScenario();
+        notify("Removed from saved people");
+      } catch (e) {
+        notify((e as Error).message, "warn");
+      }
+    },
+    [fetchScenario, notify],
+  );
+
+  const handleSaveCrew = useCallback(async () => {
+    try {
+      await client.saveCrew();
+      await fetchScenario();
+      notify("Crew saved for later trips");
+    } catch (e) {
+      notify((e as Error).message, "warn");
+    }
+  }, [fetchScenario, notify]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -568,11 +644,13 @@ export default function App() {
     debtCount > 0 && !hasNetted
       ? {
           label: loading === "engine" ? "Running…" : "Net & route",
+          compact: loading === "engine" ? "Run…" : "Net",
           onClick: handleEngine,
         }
       : hasNetted && !allActed
         ? {
             label: loading === "settle-all" ? "Settling…" : "Settle all",
+            compact: loading === "settle-all" ? "Wait…" : "Settle",
             onClick: handleSettleAll,
           }
         : null;
@@ -586,7 +664,7 @@ export default function App() {
           ? `${obligations.length} transfer${obligations.length === 1 ? "" : "s"}`
           : `${debtCount} IOU${debtCount === 1 ? "" : "s"}`
       }
-      defaultOpen
+      defaultOpen={hasNetted || debtCount <= 8}
       badge={
         railTypes.length > 0 ? <RailLegend types={railTypes} /> : undefined
       }
@@ -602,32 +680,43 @@ export default function App() {
     </Collapsible>
   );
 
+  const dataForms = (
+    <AddDataForms
+      key={`${scenario.trip?.id ?? "trip"}-${tripEmpty ? "empty" : "crew"}`}
+      tripName={scenario.trip?.name ?? "Trip"}
+      locked={loading !== null}
+      entities={scenario.entities}
+      expenses={scenario.expenses}
+      expenseCount={scenario.expenses.length}
+      onAdded={handleDataAdded}
+      onClear={handleClear}
+      onLoadSample={handleLoadSample}
+      contacts={scenario.contacts ?? []}
+      onAddContact={(id) => void handleAddContact(id)}
+      onRemoveContact={(id) => void handleRemoveContact(id)}
+      onSaveCrew={() => void handleSaveCrew()}
+      fxRates={scenario.fx?.rates}
+      travelerSignal={travelerSignal}
+      quiet={tripEmpty}
+      editEntity={scenario.entities.find((e) => e.id === editEntityId) ?? null}
+      editExpense={
+        scenario.expenses.find((e) => e.id === editExpenseId) ?? null
+      }
+      onCancelEdit={() => {
+        setEditEntityId(null);
+        setEditExpenseId(null);
+        setAddingTraveler(false);
+      }}
+    />
+  );
+
   const tripPanel = (
     <section className="glass animate-fade-in-up scroll-mt-24 space-y-4 rounded-2xl p-4 sm:p-5">
-      <AddDataForms
-        tripName={scenario.trip?.name ?? "Trip"}
-        locked={loading !== null}
-        entities={scenario.entities}
-        expenses={scenario.expenses}
-        expenseCount={scenario.expenses.length}
-        onAdded={handleDataAdded}
-        onClear={handleClear}
-        onLoadSample={handleLoadSample}
-        travelerSignal={travelerSignal}
-        editEntity={
-          scenario.entities.find((e) => e.id === editEntityId) ?? null
-        }
-        editExpense={
-          scenario.expenses.find((e) => e.id === editExpenseId) ?? null
-        }
-        onCancelEdit={() => {
-          setEditEntityId(null);
-          setEditExpenseId(null);
-        }}
-      />
+      {dataForms}
       <ScenarioOverview
         entities={scenario.entities}
         expenses={scenario.expenses}
+        fx={scenario.fx}
         onDeleteTraveler={loading !== null ? undefined : handleDeleteTraveler}
         onDeleteExpense={loading !== null ? undefined : handleDeleteExpense}
         onEditTraveler={
@@ -653,7 +742,7 @@ export default function App() {
   return (
     <div className="min-h-screen font-sans">
       <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header-bg)]">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-4 sm:gap-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
             <LogoMark size={32} />
             <Wordmark className="hidden text-[1.15rem] sm:inline" />
@@ -666,21 +755,26 @@ export default function App() {
                 onCreate={(name) => void handleCreateTrip(name)}
                 onRename={(id, name) => void handleRenameTrip(id, name)}
                 onDelete={(id) => void handleDeleteTrip(id)}
+                onDuplicate={(id) => void handleDuplicateTrip(id)}
               />
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
             {headerAction && (
               <button
                 type="button"
                 onClick={() => void headerAction.onClick()}
                 disabled={loading !== null}
+                aria-label={headerAction.label}
                 className="btn-primary !px-3 !py-1.5 text-xs"
               >
-                {headerAction.label}
+                <span className="sm:hidden">{headerAction.compact}</span>
+                <span className="hidden sm:inline">{headerAction.label}</span>
               </button>
             )}
-            <FxBar fx={scenario.fx} />
+            <div className="hidden sm:block">
+              <FxBar fx={scenario.fx} />
+            </div>
             <ThemeToggle />
             <AccountMenu
               user={user}
@@ -695,11 +789,18 @@ export default function App() {
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-5 sm:px-6">
         {error && (
-          <div className="animate-fade-in rounded-xl border border-[#c48878]/25 bg-[#c48878]/10 p-3.5">
+          <div className="animate-fade-in flex items-start justify-between gap-3 rounded-xl border border-[#c48878]/25 bg-[#c48878]/10 p-3.5">
             <p className="text-sm text-[#c48878]">
               <span className="font-semibold">Something went wrong:</span>{" "}
               {error}
             </p>
+            <button
+              type="button"
+              className="text-slate-400 hover:text-slate-200 shrink-0 text-xs font-medium"
+              onClick={() => setError(null)}
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -719,8 +820,18 @@ export default function App() {
             onRename={(name) => {
               if (scenario.trip) void handleRenameTrip(scenario.trip.id, name);
             }}
-            onStart={() => setTravelerSignal((s) => s + 1)}
+            onStart={() => {
+              setAddingTraveler(true);
+              setTravelerSignal((s) => s + 1);
+            }}
             onSample={handleLoadSample}
+            contacts={scenario.contacts ?? []}
+            entities={scenario.entities}
+            locked={loading !== null}
+            onAddContact={(id) => void handleAddContact(id)}
+            onRemoveContact={(id) => void handleRemoveContact(id)}
+            adding={addingTraveler}
+            form={dataForms}
           />
         )}
 
@@ -734,15 +845,23 @@ export default function App() {
             </p>
           )}
 
-        {!tripEmpty && (
+        {!tripEmpty && (debtCount > 0 || hasNetted) && (
           <section className="animate-fade-in-up">
             <Stepper steps={steps} busy={loading !== null} />
           </section>
         )}
 
-        {nettingResult && (
-          <ReductionStats result={nettingResult} entityMap={entityMap} />
+        {!tripEmpty && (
+          <TripBooks
+            entities={scenario.entities}
+            expenses={scenario.expenses}
+            debtEdges={scenario.debtEdges}
+            obligations={obligations}
+            fx={scenario.fx}
+          />
         )}
+
+        {nettingResult && <ReductionStats result={nettingResult} />}
 
         {hasNetted && (
           <section className="animate-fade-in-up">
@@ -750,7 +869,9 @@ export default function App() {
               <h2 className="font-display text-slate-100 text-[1.35rem] font-semibold tracking-[-0.03em]">
                 Transfers
                 <span className="text-slate-500 ml-2 font-sans text-xs font-normal tracking-normal">
-                  {obligations.length} to settle
+                  {obligations.every((o) => o.status === "settled")
+                    ? "all settled"
+                    : `${obligations.filter((o) => o.status !== "settled").length} to settle`}
                 </span>
               </h2>
               <SharePlanButton plan={scenario.plan} onCopied={notify} />
@@ -826,9 +947,7 @@ export default function App() {
           </section>
         )}
 
-        {tripEmpty ? (
-          tripPanel
-        ) : (
+        {!tripEmpty && (
           <>
             {tripPanel}
             {(debtCount > 0 || hasNetted) && graphBlock}
@@ -839,7 +958,7 @@ export default function App() {
           <Collapsible
             title="Settlement log"
             sub={`${scenario.ledger.length} recorded transfer${scenario.ledger.length === 1 ? "" : "s"}`}
-            defaultOpen
+            defaultOpen={false}
           >
             <SettlementLog
               ledger={scenario.ledger}
@@ -918,11 +1037,25 @@ function HeroIntro({
   onRename,
   onStart,
   onSample,
+  contacts,
+  entities,
+  locked,
+  onAddContact,
+  onRemoveContact,
+  adding = false,
+  form,
 }: {
   tripName: string;
   onRename: (name: string) => void;
   onStart: () => void;
   onSample: () => void;
+  contacts: SavedContact[];
+  entities: Entity[];
+  locked: boolean;
+  onAddContact: (id: string) => void;
+  onRemoveContact: (id: string) => void;
+  adding?: boolean;
+  form?: ReactNode;
 }) {
   const [name, setName] = useState(tripName);
   useEffect(() => setName(tripName), [tripName]);
@@ -932,8 +1065,9 @@ function HeroIntro({
         Start a trip
       </h1>
       <p className="text-slate-400 mt-2.5 max-w-lg text-[15px] leading-7">
-        Name it, add travelers and expenses. LiteFX nets debts into the fewest
-        transfers and picks a rail for each one. Past trips stay in the header.
+        {contacts.length > 0
+          ? "Name it, then tap saved people or add someone new. LiteFX nets debts into the fewest transfers and picks a rail for each one."
+          : "Name it, then add someone. LiteFX nets debts into the fewest transfers and picks a rail for each one."}
       </p>
       <label className="mt-4 block">
         <span className="text-slate-500 text-[11px] font-medium tracking-wide uppercase">
@@ -951,18 +1085,32 @@ function HeroIntro({
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
-          className="text-slate-100 mt-1.5 w-full max-w-sm rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-2 text-sm"
+          className="input-field mt-1.5 max-w-sm"
           placeholder="Tokyo 2026"
         />
       </label>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" onClick={onStart} className="btn-primary">
-          Add a traveler
-        </button>
-        <button type="button" onClick={onSample} className="btn-ghost">
-          Load sample
-        </button>
-      </div>
+      {contacts.length > 0 && (
+        <div className="mt-4">
+          <SavedPeople
+            contacts={contacts}
+            entities={entities}
+            locked={locked}
+            onAdd={onAddContact}
+            onRemove={onRemoveContact}
+          />
+        </div>
+      )}
+      {!adding && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button type="button" onClick={onStart} className="btn-primary">
+            Add a traveler
+          </button>
+          <button type="button" onClick={onSample} className="btn-ghost">
+            Load sample
+          </button>
+        </div>
+      )}
+      {form}
     </section>
   );
 }
@@ -986,7 +1134,6 @@ function useCountUp(target: number, duration = 700): number {
 
 function ReductionStats({
   result,
-  entityMap,
 }: {
   result: {
     rawEdgeCount: number;
@@ -1000,7 +1147,6 @@ function ReductionStats({
     corridorSavingsUsd?: number;
     balances: { entityId: string; entityName: string; netUsd: number }[];
   };
-  entityMap: Map<string, { id: string; name: string; country: string }>;
 }) {
   const pct = Math.max(
     6,
@@ -1076,9 +1222,12 @@ function ReductionStats({
           <p className="text-slate-500 mb-4 text-[11px]">
             Matched cheapest corridors first (local / SEPA / linked) instead of
             largest-debtor → largest-creditor.
-            {result.greedyFeeUsd != null && result.greedyFeeUsd > 0
-              ? ` Splitwise-style matching would have cost ~$${result.greedyFeeUsd.toFixed(2)} in rail fees.`
-              : ""}
+            {(result.greedyFeeUsd ?? 0) > 0
+              ? ` Splitwise-style matching would have cost ~$${result.greedyFeeUsd!.toFixed(2)} in rail fees.`
+              : ""}{" "}
+            {booksCloseUsd(result.balances).closed
+              ? "Net balances sum to $0.00 — the books close."
+              : "Net balances should sum to $0.00."}
           </p>
 
           <div className="space-y-3">
@@ -1112,50 +1261,6 @@ function ReductionStats({
               </div>
             </div>
           </div>
-
-          {result.balances.length > 0 && (
-            <div className="border-white/[0.06] mt-5 border-t pt-4">
-              <p className="section-title mb-3">Net balances</p>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
-                {result.balances.map((b) => {
-                  const ent = entityMap.get(b.entityId);
-                  const settled = Math.abs(b.netUsd) < 0.005;
-                  const isCreditor = b.netUsd > 0.005;
-                  return (
-                    <div
-                      key={b.entityId}
-                      className="bg-black/25 border-white/[0.05] flex flex-col items-center rounded-xl border p-3 text-center"
-                    >
-                      <Avatar id={b.entityId} name={b.entityName} size={36} />
-                      <p className="text-slate-200 mt-2 text-[13px] leading-tight font-semibold">
-                        {b.entityName.split(" ")[0]}
-                      </p>
-                      <p className="text-slate-500 text-[10px]">
-                        {ent
-                          ? `${countryFlag(ent.country)} ${ent.country}`
-                          : ""}
-                      </p>
-                      <p
-                        className={`mt-1.5 font-mono text-[13px] font-semibold ${
-                          settled
-                            ? "text-slate-400"
-                            : isCreditor
-                              ? "text-[#9aaa8c]"
-                              : "text-[#c48878]"
-                        }`}
-                      >
-                        {isCreditor ? "+" : settled ? "" : "−"}$
-                        {Math.abs(b.netUsd).toFixed(2)}
-                      </p>
-                      <p className="text-slate-600 text-[9px] tracking-wide uppercase">
-                        {settled ? "settled" : isCreditor ? "receives" : "owes"}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </section>

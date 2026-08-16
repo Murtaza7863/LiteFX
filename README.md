@@ -31,12 +31,13 @@ Without `DATABASE_URL`, the server still runs and falls back to JSON. Render’s
 
 ## Demo Flow (under 2 minutes)
 
-1. **Open or name a trip** — start a blank one, or open the sample (6 travelers across Singapore, Thailand, the US, and Germany). Opening the sample keeps any trip you already started. Past trips stay in the header.
-2. **Type an expense title** — “Grab to the airport” classifies as Transport before you pick a category.
-3. **Click Net & route** — pairwise IOUs collapse into a handful of transfers, each with a rail and fee.
-4. **Open a transfer → Try another rail** — switch a PromptPay (0%) payout to USDC (1.5%) and watch the fee jump.
-5. **Link Eve's PayNow** — the insight button drops her claim link and re-routes onto local PayNow.
-6. **Copy send instructions, then Settle** — local/linked/USDC mark settled. A remaining claim link opens a recipient preview (same browser on Pages; shareable on the server).
+1. **Open or name a trip** — start a blank one, or open the sample. Saved people from earlier trips appear as chips; tap to add them. Duplicate a trip from the header if you want the same crew and bills again. Sample people are saved when you link an account or tap **Save this crew**.
+2. **Type an expense title** — “Grab to the airport” classifies as Transport before you pick a category. Shares and USD equivalents show before you save.
+3. **Read the trip books** — each person’s net (owed / owes) and spend by category. IOUs should net to $0.00.
+4. **Click Net & route** — pairwise IOUs collapse into a handful of transfers, each with a rail, fee, and FX conversion.
+5. **Open a transfer → Try another rail** — switch a PromptPay (0%) payout to USDC (1.5%) and watch the fee jump.
+6. **Link Eve's PayNow** — the insight button drops her claim link, re-routes onto local PayNow, and saves Eve for the next trip.
+7. **Copy send instructions, then Settle** — local/linked/USDC mark settled. A remaining claim link opens a recipient preview (same browser on Pages; shareable on the server).
 
 ## Persistence and auth
 
@@ -82,13 +83,16 @@ Protected routes need a session cookie. Browser clients also send `X-LiteFX-Requ
 | GET | `/api/health` | Public |
 | POST | `/api/auth/signup` `/login` `/logout` `/demo` | Demo is off in production unless `ENABLE_DEMO_AUTH=true` |
 | GET | `/api/auth/me` | |
-| GET | `/api/scenario` | Active trip, trip list, debts, nets, ledger, FX, plan |
+| GET | `/api/scenario` | Active trip, trip list, saved people, debts, nets, ledger, FX, plan |
 | POST | `/api/seed` `/clear` | Sample / blank the **active** trip |
 | POST | `/api/trips` | Create a named trip and switch to it |
 | POST | `/api/trips/:id/select` | Switch active trip |
+| POST | `/api/trips/:id/duplicate` | Copy travelers and expenses into a new trip |
 | PATCH | `/api/trips/:id` | Rename |
 | DELETE | `/api/trips/:id` | Delete (keeps at least one) |
-| POST/PATCH/DELETE | `/api/entities` `/api/expenses` | Title classifies category when omitted |
+| DELETE | `/api/contacts/:id` | Remove a saved person (not from trips) |
+| POST | `/api/contacts/save-crew` | Save everyone on the active trip to the address book |
+| POST/PATCH/DELETE | `/api/entities` `/api/expenses` | POST `{ contactId }` adds a saved person; new travelers are saved automatically |
 | POST | `/api/engine/run` | Net + route; 409 if already netted |
 | POST | `/api/obligations/:id/rail` | Override rail |
 | POST | `/api/entities/:id/link-account` | Attach primary rail and re-route |

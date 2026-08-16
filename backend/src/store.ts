@@ -38,6 +38,7 @@ const DATA_DIR = path.join(__dirname, "..", "data");
 const DEFAULT_OWNER = "user-local";
 const SAMPLE_TRIP_NAME = "Bangkok Trip 2026";
 const MAX_TRIPS = 40;
+const MAX_CONTACTS = 80;
 const als = new AsyncLocalStorage<string>();
 const tripAls = new AsyncLocalStorage<string>();
 
@@ -93,9 +94,20 @@ export interface TripRecord extends StoreState {
   updatedAt: string;
 }
 
+export interface SavedContact {
+  id: string;
+  name: string;
+  country: string;
+  contact: { type: "email" | "phone"; value: string };
+  linkedRailAliases: { railType: string; alias: string }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UserWorkspace {
   activeTripId: string;
   trips: Record<string, TripRecord>;
+  contacts: SavedContact[];
 }
 
 export interface TripSummary {
@@ -280,12 +292,23 @@ function uniqueTripName(ws: UserWorkspace, base: string): string {
   const taken = new Set(
     Object.values(ws.trips).map((t) => t.name.toLowerCase()),
   );
-  if (!taken.has(base.toLowerCase())) return base;
+  const fit = (s: string) => s.slice(0, 80).trimEnd() || "Trip";
+  const clipped = fit(base);
+  if (!taken.has(clipped.toLowerCase())) return clipped;
   for (let n = 2; n < 200; n++) {
-    const candidate = `${base} (${n})`;
+    const suffix = ` (${n})`;
+    const candidate = fit(
+      `${clipped.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`,
+    );
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
-  return `${base} ${Date.now()}`;
+  return fit(`${clipped.slice(0, 67)} ${Date.now()}`);
+}
+
+function copyTripName(name: string): string {
+  const suffix = " (copy)";
+  if (name.length + suffix.length <= 80) return `${name}${suffix}`;
+  return `${name.slice(0, 80 - suffix.length).trimEnd()}${suffix}`;
 }
 
 function inferTripName(state: StoreState): string {
@@ -298,6 +321,40 @@ function inferTripName(state: StoreState): string {
     return "My trip";
   }
   return "New trip";
+}
+
+function emptyWorkspace(): UserWorkspace {
+  const t = blankTrip();
+  return { activeTripId: t.id, trips: { [t.id]: t }, contacts: [] };
+}
+
+function coerceContacts(raw: unknown): SavedContact[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SavedContact[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const c = item as Partial<SavedContact>;
+    const name = (c.name ?? "").trim().slice(0, 80);
+    const country = (c.country ?? "").trim().toUpperCase();
+    if (!name || !country) continue;
+    const contact =
+      c.contact && (c.contact.type === "email" || c.contact.type === "phone")
+        ? { type: c.contact.type, value: (c.contact.value ?? "").trim() }
+        : { type: "email" as const, value: "" };
+    out.push({
+      id: c.id || `ppl-${Math.random().toString(36).slice(2, 10)}`,
+      name,
+      country,
+      contact,
+      linkedRailAliases: Array.isArray(c.linkedRailAliases)
+        ? c.linkedRailAliases.filter((a) => a && typeof a.railType === "string")
+        : [],
+      createdAt: c.createdAt || nowIso(),
+      updatedAt: c.updatedAt || nowIso(),
+    });
+    if (out.length >= MAX_CONTACTS) break;
+  }
+  return out;
 }
 
 function blankTrip(name = "New trip"): TripRecord {
@@ -360,14 +417,17 @@ function migrateWorkspace(raw: unknown): UserWorkspace {
         : Object.values(trips).sort((a, b) =>
             b.updatedAt.localeCompare(a.updatedAt),
           )[0].id;
-    return { activeTripId: active, trips };
+    return {
+      activeTripId: active,
+      trips,
+      contacts: coerceContacts(raw.contacts),
+    };
   }
   if (looksLikeStore(raw)) {
     const trip = wrapTrip(raw);
-    return { activeTripId: trip.id, trips: { [trip.id]: trip } };
+    return { activeTripId: trip.id, trips: { [trip.id]: trip }, contacts: [] };
   }
-  const t = blankTrip();
-  return { activeTripId: t.id, trips: { [t.id]: t } };
+  return emptyWorkspace();
 }
 
 export function normalizeApp(parsed: unknown): AppState | null {
@@ -415,10 +475,10 @@ export function normalizeApp(parsed: unknown): AppState | null {
 function ensureWorkspace(uid: string): UserWorkspace {
   if (!app) app = emptyApp();
   if (!app.workspaces[uid]) {
-    const t = blankTrip();
-    app.workspaces[uid] = { activeTripId: t.id, trips: { [t.id]: t } };
+    app.workspaces[uid] = emptyWorkspace();
   }
   const ws = app.workspaces[uid];
+  if (!ws.contacts) ws.contacts = [];
   if (!ws.trips[ws.activeTripId]) {
     const first = Object.values(ws.trips)[0];
     if (first) ws.activeTripId = first.id;
@@ -680,8 +740,7 @@ export function addUser(user: UserRecord): void {
     st.workspaces[user.id] = orphan;
     delete st.workspaces[DEFAULT_OWNER];
   } else if (!st.workspaces[user.id]) {
-    const t = blankTrip();
-    st.workspaces[user.id] = { activeTripId: t.id, trips: { [t.id]: t } };
+    st.workspaces[user.id] = emptyWorkspace();
   }
   save();
 }
@@ -888,7 +947,10 @@ export function addExpense(exp: Expense): void {
 export function updateEntity(
   id: string,
   patch: Partial<
-    Pick<Entity, "name" | "country" | "contact" | "linkedRailAliases">
+    Pick<
+      Entity,
+      "name" | "country" | "contact" | "linkedRailAliases" | "contactId"
+    >
   >,
 ): Entity | null {
   const st = getStore();
@@ -900,6 +962,7 @@ export function updateEntity(
   if (patch.contact !== undefined) e.contact = patch.contact;
   if (patch.linkedRailAliases !== undefined)
     e.linkedRailAliases = patch.linkedRailAliases;
+  if (patch.contactId !== undefined) e.contactId = patch.contactId;
   if (patch.name && st.nettingSummary) {
     for (const b of st.nettingSummary.balances) {
       if (b.entityId === id) b.entityName = patch.name;
@@ -1051,4 +1114,221 @@ export function deleteTrip(id: string): { ok: true } | { error: string } {
   }
   save();
   return { ok: true };
+}
+
+export function listContacts(): SavedContact[] {
+  initStore();
+  return [...ensureWorkspace(ownerId()).contacts].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+}
+
+function contactKey(name: string, country: string): string {
+  return `${name.trim().toLowerCase()}|${country.trim().toUpperCase()}`;
+}
+
+export function travelerOnTrip(
+  name: string,
+  country: string,
+  exceptId?: string,
+): Entity | undefined {
+  const key = contactKey(name, country);
+  return getStore().entities.find(
+    (e) => e.id !== exceptId && contactKey(e.name, e.country) === key,
+  );
+}
+
+export function upsertContact(person: {
+  id?: string;
+  name: string;
+  country: string;
+  contact: { type: "email" | "phone"; value: string };
+  linkedRailAliases: { railType: string; alias: string }[];
+}): SavedContact | { error: string } {
+  initStore();
+  const name = person.name.trim();
+  if (!name || name.length > 80) {
+    return { error: "Name must be 1–80 characters." };
+  }
+  const ws = ensureWorkspace(ownerId());
+  const now = nowIso();
+  const byId = person.id
+    ? ws.contacts.find((c) => c.id === person.id)
+    : undefined;
+  const byName = ws.contacts.find(
+    (c) => contactKey(c.name, c.country) === contactKey(name, person.country),
+  );
+  const existing = byId ?? byName;
+  if (existing) {
+    existing.name = name;
+    existing.country = person.country;
+    existing.contact = person.contact;
+    existing.linkedRailAliases = person.linkedRailAliases;
+    existing.updatedAt = now;
+    save();
+    return existing;
+  }
+  if (ws.contacts.length >= MAX_CONTACTS) {
+    return { error: `You can save up to ${MAX_CONTACTS} people.` };
+  }
+  const saved: SavedContact = {
+    id: `ppl-${Math.random().toString(36).slice(2, 10)}`,
+    name,
+    country: person.country,
+    contact: person.contact,
+    linkedRailAliases: person.linkedRailAliases,
+    createdAt: now,
+    updatedAt: now,
+  };
+  ws.contacts.push(saved);
+  save();
+  return saved;
+}
+
+export function deleteContact(id: string): boolean {
+  initStore();
+  const ws = ensureWorkspace(ownerId());
+  const before = ws.contacts.length;
+  ws.contacts = ws.contacts.filter((c) => c.id !== id);
+  if (ws.contacts.length === before) return false;
+  for (const trip of Object.values(ws.trips)) {
+    for (const e of trip.entities) {
+      if (e.contactId === id) delete e.contactId;
+    }
+  }
+  save();
+  return true;
+}
+
+function asSavedContact(c: Entity["contact"]): {
+  type: "email" | "phone";
+  value: string;
+} {
+  return {
+    type: c.type === "phone" ? "phone" : "email",
+    value: c.value,
+  };
+}
+
+/** Upsert this traveler into the account address book. */
+export function rememberTraveler(entity: Entity): Entity {
+  initStore();
+  const saved = upsertContact({
+    id: entity.contactId,
+    name: entity.name,
+    country: entity.country,
+    contact: asSavedContact(entity.contact),
+    linkedRailAliases: entity.linkedRailAliases,
+  });
+  if ("error" in saved) return entity;
+  if (saved.id === entity.contactId) return entity;
+  return (
+    updateEntity(entity.id, { contactId: saved.id }) ?? {
+      ...entity,
+      contactId: saved.id,
+    }
+  );
+}
+
+/** Save everyone on the active trip so they can be reused later. */
+export function saveTripCrew(): SavedContact[] {
+  initStore();
+  for (const e of getStore().entities) rememberTraveler(e);
+  return listContacts();
+}
+
+export function createTraveler(
+  entity: Entity,
+  saveContact = true,
+): Entity | { error: string } {
+  initStore();
+  if (entity.contactId) {
+    const taken = getStore().entities.find(
+      (e) => e.contactId === entity.contactId,
+    );
+    if (taken) {
+      return { error: `${taken.name.trim()} is already on this trip.` };
+    }
+  }
+  const dup = travelerOnTrip(entity.name, entity.country);
+  if (dup) {
+    return { error: `${dup.name.trim()} is already on this trip.` };
+  }
+  let contactId = entity.contactId;
+  if (saveContact) {
+    const saved = upsertContact({
+      id: entity.contactId,
+      name: entity.name,
+      country: entity.country,
+      contact: entity.contact,
+      linkedRailAliases: entity.linkedRailAliases,
+    });
+    if (!("error" in saved)) contactId = saved.id;
+  }
+  const next = { ...entity, contactId };
+  addEntity(next);
+  return next;
+}
+
+export function addEntityFromContact(
+  contactId: string,
+): Entity | { error: string } {
+  initStore();
+  const saved = ensureWorkspace(ownerId()).contacts.find(
+    (c) => c.id === contactId,
+  );
+  if (!saved) return { error: "Saved person not found." };
+  return createTraveler(
+    {
+      id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
+      name: saved.name,
+      country: saved.country,
+      contact: saved.contact,
+      linkedRailAliases: structuredClone(saved.linkedRailAliases),
+      contactId: saved.id,
+    },
+    false,
+  );
+}
+
+export function duplicateTrip(
+  sourceId?: string,
+): TripRecord | { error: string } {
+  initStore();
+  const ws = ensureWorkspace(ownerId());
+  const src = ws.trips[sourceId || ws.activeTripId];
+  if (!src) return { error: "Trip not found." };
+  const created = createTrip(copyTripName(src.name));
+  if ("error" in created) return created;
+  const idMap: Record<string, string> = {};
+  const entities = src.entities.map((e) => {
+    const id = `ent-u${Math.random().toString(36).slice(2, 7)}`;
+    idMap[e.id] = id;
+    return { ...structuredClone(e), id };
+  });
+  const expenses = src.expenses.map((e) => {
+    const parts = e.split?.parts
+      ? Object.fromEntries(
+          Object.entries(e.split.parts).map(([k, v]) => [idMap[k] ?? k, v]),
+        )
+      : e.split?.parts;
+    return {
+      ...structuredClone(e),
+      id: `exp-u${Math.random().toString(36).slice(2, 7)}`,
+      tripId: created.id,
+      payerId: idMap[e.payerId] ?? e.payerId,
+      participantIds: e.participantIds.map((p) => idMap[p] ?? p),
+      split:
+        e.split && e.split.mode !== "equal"
+          ? { mode: e.split.mode, parts }
+          : e.split,
+    };
+  });
+  const dest = ws.trips[created.id];
+  dest.entities = entities;
+  dest.expenses = expenses;
+  dest.debtEdges = deriveDebtEdges(expenses);
+  dest.updatedAt = nowIso();
+  save();
+  return dest;
 }

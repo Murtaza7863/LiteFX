@@ -18,7 +18,7 @@ export function paymentSlip(
   if (obligation.chosenRail === "claim_link") {
     return {
       label: "Claim link",
-      text: `${payer} shares a claim link. ${payee} picks how to receive ${amount}. Ref ${ref}.`,
+      text: `${payer} shares a claim link. ${payee} picks how to receive ${amount} ($${obligation.amountUsd.toFixed(2)}). Ref ${ref}.`,
     };
   }
   if (obligation.chosenRail === "stable_bridge") {
@@ -29,6 +29,6 @@ export function paymentSlip(
   }
   return {
     label: rail || "Local send",
-    text: `${payer} sends ${amount} via ${rail || "the local rail"} to ${alias}. Reference ${ref}.`,
+    text: `${payer} sends ${amount} ($${obligation.amountUsd.toFixed(2)}) via ${rail || "the local rail"} to ${alias}. Reference ${ref}.`,
   };
 }

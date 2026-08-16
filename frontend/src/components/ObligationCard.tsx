@@ -100,9 +100,11 @@ export function ObligationCard({
               {obligation.settlementCurrency}
             </span>
           </p>
-          <p className="text-slate-500 font-mono text-[11px]">
-            ≈ ${obligation.amountUsd.toFixed(2)} USD
-          </p>
+          {obligation.settlementCurrency !== "USD" && (
+            <p className="text-slate-500 font-mono text-[11px]">
+              ≈ ${obligation.amountUsd.toFixed(2)} USD
+            </p>
+          )}
         </div>
         {meta && (
           <div

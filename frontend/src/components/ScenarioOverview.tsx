@@ -1,15 +1,17 @@
 import { useState } from "react";
 
-import type { Entity, Expense } from "../api/client";
+import type { Entity, Expense, FxSnapshot } from "../api/client";
 
 import { categoryLabel, EXPENSE_CATEGORIES } from "../lib/countries";
 import { countryFlag, COUNTRY_NAMES } from "../lib/theme";
+import { toUsd } from "../lib/tripMath";
 import { Avatar } from "./Avatar";
 import { IconPencil, IconX } from "./icons";
 
 interface Props {
   entities: Entity[];
   expenses: Expense[];
+  fx?: FxSnapshot;
   onDeleteTraveler?: (id: string) => void;
   onDeleteExpense?: (id: string) => void;
   onEditTraveler?: (id: string) => void;
@@ -19,6 +21,7 @@ interface Props {
 export function ScenarioOverview({
   entities,
   expenses,
+  fx,
   onDeleteTraveler,
   onDeleteExpense,
   onEditTraveler,
@@ -60,6 +63,14 @@ export function ScenarioOverview({
                         title="No linked account — will receive via claim link"
                       >
                         no account
+                      </span>
+                    )}
+                    {e.contactId && (
+                      <span
+                        className="chip bg-white/[0.06] text-slate-400 shrink-0 border-[var(--border)] !px-1.5 !py-0 !text-[9px]"
+                        title="Saved to your people"
+                      >
+                        saved
                       </span>
                     )}
                   </div>
@@ -180,6 +191,19 @@ export function ScenarioOverview({
                       <td className="text-slate-200 px-3.5 py-2.5 text-right font-mono text-[13px] whitespace-nowrap">
                         {exp.amount.toLocaleString()}{" "}
                         <span className="text-slate-500">{exp.currency}</span>
+                        {exp.currency !== "USD" &&
+                          (() => {
+                            const usd = toUsd(
+                              exp.amount,
+                              exp.currency,
+                              fx?.rates,
+                            );
+                            return usd != null ? (
+                              <span className="text-slate-600 mt-0.5 block text-[10px]">
+                                ≈ ${usd.toFixed(2)}
+                              </span>
+                            ) : null;
+                          })()}
                       </td>
                       {(onDeleteExpense || onEditExpense) && (
                         <td className="py-2.5 pr-2 text-right whitespace-nowrap">

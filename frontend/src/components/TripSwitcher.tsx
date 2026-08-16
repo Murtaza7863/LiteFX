@@ -35,6 +35,7 @@ export function TripSwitcher({
   onCreate,
   onRename,
   onDelete,
+  onDuplicate,
 }: {
   trip?: TripSummary;
   trips: TripSummary[];
@@ -43,6 +44,7 @@ export function TripSwitcher({
   onCreate: (name: string) => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"list" | "new" | "rename">("list");
@@ -98,7 +100,7 @@ export function TripSwitcher({
           setMode("list");
         }}
         disabled={busy}
-        className="hover:bg-white/[0.06] flex max-w-[min(100%,16rem)] items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition-colors disabled:opacity-40 sm:max-w-xs"
+        className="hover:bg-white/[0.06] flex max-w-[min(100%,9.5rem)] items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition-colors disabled:opacity-40 sm:max-w-xs"
         aria-expanded={open}
         aria-haspopup="menu"
         title={current?.name ?? "Trips"}
@@ -156,7 +158,7 @@ export function TripSwitcher({
                   className="hover:bg-white/[0.05] text-slate-300 flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
                 >
                   <IconPlus className="h-3.5 w-3.5" />
-                  New trip
+                  Start another trip
                 </button>
                 {current && (
                   <button
@@ -169,6 +171,19 @@ export function TripSwitcher({
                     className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm"
                   >
                     Rename
+                  </button>
+                )}
+                {current && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      onDuplicate(current.id);
+                    }}
+                    className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm"
+                  >
+                    Duplicate this trip
                   </button>
                 )}
                 {current && canDelete && (
@@ -202,7 +217,7 @@ export function TripSwitcher({
                 value={name}
                 maxLength={80}
                 onChange={(e) => setName(e.target.value)}
-                className="text-slate-100 mt-1.5 w-full rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-2.5 py-1.5 text-sm"
+                className="input-field mt-1.5"
                 placeholder="Tokyo 2026"
               />
               <div className="mt-2 flex justify-end gap-1.5">

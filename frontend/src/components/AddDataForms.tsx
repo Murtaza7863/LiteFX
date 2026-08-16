@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
-import type { Entity, Expense } from "../api/client";
+import type { Entity, Expense, SavedContact } from "../api/client";
 
 import { client } from "../api/client";
 import {
@@ -11,8 +11,10 @@ import {
   currencyFor,
   classifyExpense,
 } from "../lib/countries";
+import { formatUsd, previewShares, toUsd } from "../lib/tripMath";
 import { CountrySelect } from "./CountrySelect";
 import { IconPlus, IconDownload, IconMore } from "./icons";
+import { SavedPeople } from "./SavedPeople";
 
 const inputCls = "input-field";
 
@@ -34,7 +36,13 @@ interface Props {
   onAdded: (msg: string) => void;
   onClear: () => void;
   onLoadSample: () => void;
+  contacts?: SavedContact[];
+  onAddContact?: (id: string) => void;
+  onRemoveContact?: (id: string) => void;
+  onSaveCrew?: () => void;
+  fxRates?: Record<string, number>;
   travelerSignal?: number;
+  quiet?: boolean;
   editEntity?: Entity | null;
   editExpense?: Expense | null;
   onCancelEdit?: () => void;
@@ -97,7 +105,13 @@ export function AddDataForms({
   onAdded,
   onClear,
   onLoadSample,
+  contacts = [],
+  onAddContact,
+  onRemoveContact,
+  onSaveCrew,
+  fxRates,
   travelerSignal = 0,
+  quiet = false,
   editEntity = null,
   editExpense = null,
   onCancelEdit,
@@ -116,13 +130,6 @@ export function AddDataForms({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
-
-  useEffect(() => {
-    if (travelerSignal > 0 && !editEntity && !editExpense) {
-      setOpen("traveler");
-      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [travelerSignal, editEntity, editExpense]);
 
   const [tName, setTName] = useState("");
   const [tCountry, setTCountry] = useState("SG");
@@ -211,6 +218,7 @@ export function AddDataForms({
     setTName("");
     setTContact("");
     setTHasAccount(true);
+    setFormError(null);
   };
 
   const resetExpenseForm = () => {
@@ -225,8 +233,19 @@ export function AddDataForms({
 
   const closeForms = () => {
     setOpen(null);
+    resetTravelerForm();
+    resetExpenseForm();
+    setFormError(null);
     onCancelEdit?.();
   };
+
+  useEffect(() => {
+    if (quiet && travelerSignal > 0 && !editEntity && !editExpense) {
+      resetTravelerForm();
+      setOpen("traveler");
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [quiet, travelerSignal, editEntity, editExpense]);
 
   const submitTraveler = async () => {
     if (!tName.trim()) return;
@@ -344,122 +363,208 @@ export function AddDataForms({
     ? entities
     : entities.filter((en) => eParticipants.includes(en.id));
 
+  const splitPreview = useMemo(() => {
+    const amount = parseFloat(eAmount);
+    if (
+      !Number.isFinite(amount) ||
+      !(amount > 0) ||
+      partEntities.length === 0
+    ) {
+      return [];
+    }
+    const parts: Record<string, number> = {};
+    for (const [id, raw] of Object.entries(eParts)) {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n > 0) parts[id] = n;
+    }
+    const shares = previewShares({
+      amount,
+      payerId: ePayer,
+      participantIds: partEntities.map((en) => en.id),
+      mode: eSplitMode,
+      parts,
+    });
+    return partEntities.map((en) => ({
+      id: en.id,
+      name: en.name.trim(),
+      share: shares[en.id] ?? 0,
+      payer: en.id === ePayer,
+    }));
+  }, [eAmount, ePayer, eParts, eSplitMode, partEntities]);
+
+  const unsavedCrew = entities.some((e) => !e.contactId);
   const editing = !!(editEntity || editExpense);
 
+  if (quiet && !open && !editing) return null;
+
   return (
-    <div ref={rootRef} className="space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-display text-slate-100 truncate text-[1.25rem] font-semibold tracking-[-0.03em]">
-            {tripName}
-          </h2>
-          <p className="text-slate-500 mt-0.5 text-xs">
-            {entities.length} traveler{entities.length === 1 ? "" : "s"} ·{" "}
-            {expenseCount} expense{expenseCount === 1 ? "" : "s"}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <div ref={menuRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((v) => !v)}
-              className="btn-ghost !px-2 !py-1.5"
-              title="Trip actions"
-              aria-expanded={menuOpen}
-              disabled={locked}
-            >
-              <IconMore className="h-4 w-4" />
-            </button>
-            {menuOpen && (
-              <div className="glass-strong animate-scale-in absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl py-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onLoadSample();
-                  }}
-                  className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm"
-                >
-                  Open sample trip
-                </button>
-                {expenses.length > 0 && (
+    <div
+      ref={rootRef}
+      className={
+        quiet
+          ? "animate-fade-in space-y-3 border-t border-[var(--border)] pt-5"
+          : "space-y-3"
+      }
+    >
+      {!quiet && (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-slate-100 truncate text-[1.25rem] font-semibold tracking-[-0.03em]">
+              {tripName}
+            </h2>
+            <p className="text-slate-500 mt-0.5 text-xs">
+              {entities.length} traveler{entities.length === 1 ? "" : "s"} ·{" "}
+              {expenseCount} expense{expenseCount === 1 ? "" : "s"}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <div ref={menuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((v) => !v)}
+                className="btn-ghost !px-2 !py-1.5"
+                title="Trip actions"
+                aria-expanded={menuOpen}
+                disabled={locked}
+              >
+                <IconMore className="h-4 w-4" />
+              </button>
+              {menuOpen && (
+                <div className="glass-strong animate-scale-in absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl py-1">
                   <button
                     type="button"
                     onClick={() => {
                       setMenuOpen(false);
-                      downloadCsv(entities, expenses, tripName);
+                      onLoadSample();
                     }}
-                    className="hover:bg-white/[0.05] text-slate-300 flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
+                    className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm"
                   >
-                    <IconDownload className="h-3.5 w-3.5" />
-                    Export CSV
+                    Open sample trip
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onClear();
-                  }}
-                  className="hover:bg-white/[0.05] block w-full px-3 py-2 text-left text-sm text-[#c48878]"
-                >
-                  Clear all
-                </button>
-              </div>
-            )}
+                  {expenses.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        downloadCsv(entities, expenses, tripName);
+                      }}
+                      className="hover:bg-white/[0.05] text-slate-300 flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
+                    >
+                      <IconDownload className="h-3.5 w-3.5" />
+                      Export CSV
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onClear();
+                    }}
+                    className="hover:bg-white/[0.05] block w-full px-3 py-2 text-left text-sm text-[#c48878]"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (open === "traveler" && !editEntity) {
+                  setOpen(null);
+                  return;
+                }
+                onCancelEdit?.();
+                resetTravelerForm();
+                setOpen("traveler");
+              }}
+              disabled={locked}
+              className={`btn-ghost !px-3 !py-1.5 text-xs ${
+                open === "traveler" ? "bg-white/[0.08]" : ""
+              }`}
+            >
+              <IconPlus className="h-3.5 w-3.5" /> Traveler
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (entities.length === 0) return;
+                if (open === "expense" && !editExpense) {
+                  setOpen(null);
+                  return;
+                }
+                onCancelEdit?.();
+                resetExpenseForm();
+                setEPayer((cur) =>
+                  cur && entities.some((en) => en.id === cur)
+                    ? cur
+                    : (entities[0]?.id ?? ""),
+                );
+                setOpen("expense");
+              }}
+              disabled={locked || entities.length === 0}
+              title={
+                entities.length === 0
+                  ? "Add a traveler first"
+                  : "Add an expense"
+              }
+              className={`btn-ghost !px-3 !py-1.5 text-xs ${
+                open === "expense" ? "bg-white/[0.08]" : ""
+              }`}
+            >
+              <IconPlus className="h-3.5 w-3.5" /> Expense
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (open === "traveler" && !editEntity) {
-                setOpen(null);
-                return;
-              }
-              onCancelEdit?.();
-              setOpen("traveler");
-            }}
-            disabled={locked}
-            className={`btn-ghost !px-3 !py-1.5 text-xs ${
-              open === "traveler" ? "bg-white/[0.08]" : ""
-            }`}
-          >
-            <IconPlus className="h-3.5 w-3.5" /> Traveler
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (entities.length === 0) return;
-              if (open === "expense" && !editExpense) {
-                setOpen(null);
-                return;
-              }
-              onCancelEdit?.();
-              resetExpenseForm();
-              setOpen("expense");
-            }}
-            disabled={locked || entities.length === 0}
-            title={
-              entities.length === 0 ? "Add a traveler first" : "Add an expense"
-            }
-            className={`btn-ghost !px-3 !py-1.5 text-xs ${
-              open === "expense" ? "bg-white/[0.08]" : ""
-            }`}
-          >
-            <IconPlus className="h-3.5 w-3.5" /> Expense
-          </button>
         </div>
-      </div>
+      )}
 
       {formError && <p className="text-xs text-[#c48878]">{formError}</p>}
 
+      {onAddContact && onRemoveContact && contacts.length > 0 && !quiet && (
+        <SavedPeople
+          contacts={contacts}
+          entities={entities}
+          locked={locked || busy}
+          onAdd={onAddContact}
+          onRemove={onRemoveContact}
+        />
+      )}
+      {onSaveCrew && unsavedCrew && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={locked || busy}
+            onClick={onSaveCrew}
+            className="btn-ghost !px-3 !py-1.5 text-xs"
+          >
+            Save this crew
+          </button>
+          <p className="text-slate-500 text-[11px]">
+            Keeps these people for the next trip.
+          </p>
+        </div>
+      )}
+
       {open === "traveler" && (
-        <div className="bg-white/[0.03] border-white/[0.06] animate-fade-in grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+        <div
+          className={
+            quiet
+              ? "animate-fade-in grid gap-3 sm:grid-cols-2"
+              : "bg-white/[0.03] border-white/[0.06] animate-fade-in grid gap-3 rounded-xl border p-3 sm:grid-cols-2"
+          }
+        >
+          {quiet && !editEntity && (
+            <p className="font-display text-slate-100 text-lg font-semibold tracking-[-0.03em] sm:col-span-2">
+              New traveler
+            </p>
+          )}
           {editEntity && (
             <p className="text-slate-400 text-[11px] sm:col-span-2">
               Editing {editEntity.name.trim()}
             </p>
           )}
           <input
+            autoFocus
             className={inputCls}
             placeholder="Name"
             value={tName}
@@ -502,15 +607,13 @@ export function AddDataForms({
             <div className="hidden sm:block" />
           )}
           <div className="flex gap-2 sm:col-span-2">
-            {editing && (
-              <button
-                type="button"
-                onClick={closeForms}
-                className="btn-ghost flex-1"
-              >
-                Cancel
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={closeForms}
+              className="btn-ghost flex-1"
+            >
+              Cancel
+            </button>
             <button
               type="button"
               onClick={submitTraveler}
@@ -520,6 +623,11 @@ export function AddDataForms({
               {editEntity ? "Save traveler" : "Add traveler"}
             </button>
           </div>
+          <p className="text-slate-500 text-[11px] sm:col-span-2">
+            {editEntity
+              ? "Edits update this person in saved people for later trips."
+              : "New travelers are saved for later trips."}
+          </p>
         </div>
       )}
 
@@ -712,16 +820,50 @@ export function AddDataForms({
             </div>
           )}
 
+          {splitPreview.length > 0 && (
+            <div className="bg-black/25 border-white/[0.05] max-h-40 space-y-1 overflow-y-auto rounded-lg border px-3 py-2 sm:col-span-2">
+              <p className="text-slate-500 text-[10px] font-medium tracking-wide uppercase">
+                Each share
+              </p>
+              {splitPreview.map((row) => {
+                const usd = toUsd(row.share, eCurrency, fxRates);
+                return (
+                  <div
+                    key={row.id}
+                    className="text-slate-300 flex items-baseline justify-between gap-2 text-[12px]"
+                  >
+                    <span className="truncate">
+                      {row.name.split(" ")[0]}
+                      {row.payer ? (
+                        <span className="text-slate-600"> · paid</span>
+                      ) : null}
+                    </span>
+                    <span className="font-mono whitespace-nowrap">
+                      {row.share.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      {eCurrency}
+                      {usd != null && eCurrency !== "USD" ? (
+                        <span className="text-slate-600">
+                          {" "}
+                          ({formatUsd(usd)})
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="flex gap-2 sm:col-span-2">
-            {editing && (
-              <button
-                type="button"
-                onClick={closeForms}
-                className="btn-ghost flex-1"
-              >
-                Cancel
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={closeForms}
+              className="btn-ghost flex-1"
+            >
+              Cancel
+            </button>
             <button
               type="button"
               onClick={submitExpense}

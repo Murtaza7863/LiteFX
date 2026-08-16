@@ -525,6 +525,22 @@ test("POST /entities/:id/link-account turns Eve's claim into local PayNow", asyn
     (o: { to: string }) => o.to === "ent-eve",
   );
   assert.equal(eve.chosenRail, "local");
+  assert.equal(scenario.body.contacts.length, 1);
+  assert.equal(scenario.body.contacts[0].name, "Eve Lim");
+  assert.equal(
+    scenario.body.contacts[0].linkedRailAliases[0].railType,
+    "PayNow",
+  );
+});
+
+test("POST /contacts/save-crew remembers the sample travelers", async () => {
+  asUser(() => seedStore());
+  const { status, body } = await json("/contacts/save-crew", {
+    method: "POST",
+  });
+  assert.equal(status, 200, body.message);
+  assert.equal(body.contacts.length, 6);
+  assert.ok(body.entities.every((e: { contactId?: string }) => e.contactId));
 });
 
 test("trips can be created, renamed, switched, and listed in scenario", async () => {
@@ -583,4 +599,42 @@ test("POST /seed asNew opens a sample without wiping the current trip", async ()
   await json(`/trips/${other.id}/select`, { method: "POST" });
   const opened = await json("/scenario");
   assert.equal(opened.body.entities[0].name, "Sam");
+});
+
+test("saved people persist across trips and reject duplicates", async () => {
+  const first = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "Sam", country: "US" }),
+  });
+  assert.equal(first.status, 200, first.body.message);
+  const scenario = await json("/scenario");
+  assert.equal(scenario.body.contacts.length, 1);
+  assert.equal(scenario.body.contacts[0].name, "Sam");
+
+  const twice = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "Sam", country: "US" }),
+  });
+  assert.equal(twice.status, 409);
+
+  const created = await json("/trips", {
+    method: "POST",
+    body: JSON.stringify({ name: "Seoul" }),
+  });
+  assert.equal(created.status, 200);
+  const added = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ contactId: scenario.body.contacts[0].id }),
+  });
+  assert.equal(added.status, 200, added.body.message);
+  assert.equal(added.body.entity.name, "Sam");
+
+  const copied = await json(`/trips/${created.body.trip.id}/duplicate`, {
+    method: "POST",
+  });
+  assert.equal(copied.status, 200, copied.body.message);
+  assert.match(copied.body.trip.name, /copy/i);
+  const copyScene = await json("/scenario");
+  assert.equal(copyScene.body.entities.length, 1);
+  assert.equal(copyScene.body.entities[0].name, "Sam");
 });

@@ -1,18 +1,26 @@
 #!/bin/bash
 set -euo pipefail
-BASE=http://localhost:3001/api
+PORT="${PORT:-3001}"
+BASE=http://127.0.0.1:$PORT/api
 COOKIE_JAR=$(mktemp)
-trap 'rm -f "$COOKIE_JAR"; kill $BACKEND_PID 2>/dev/null || true' EXIT
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+FLOW_DB="$ROOT/backend/data/db.flow.test.json"
+trap 'rm -f "$COOKIE_JAR" "$FLOW_DB"; kill $BACKEND_PID 2>/dev/null || true' EXIT
 
-echo "=== Starting backend ==="
-cd backend && npx tsx src/index.ts &
+echo "=== Starting backend on $PORT ==="
+cd "$ROOT/backend"
+PORT="$PORT" LITEFX_DB_PATH="$FLOW_DB" npx tsx src/index.ts &
 BACKEND_PID=$!
-for _ in 1 2 3 4 5 6 7 8; do
+for _ in $(seq 1 20); do
   if curl -sf "$BASE/health" >/dev/null; then
     break
   fi
   sleep 0.5
 done
+if ! curl -sf "$BASE/health" >/dev/null; then
+  echo "Backend did not become ready on $PORT"
+  exit 1
+fi
 
 echo ""
 echo "=== 0. Health ==="
@@ -105,6 +113,26 @@ print(f'Message: {d[\"message\"]}')
 print(f'Link status: {d[\"link\"][\"status\"]}')
 print(f'Payout method: {d[\"link\"][\"payoutMethod\"]}')
 assert d['success']
+"
+
+echo ""
+echo "=== 9. Save crew and reuse on a new trip ==="
+CONTACT_ID=$(curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-LiteFX-Request: 1" \
+  -X POST "$BASE/contacts/save-crew" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d['success']
+assert len(d['contacts']) == 6
+print(d['contacts'][0]['id'])
+")
+curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "Content-Type: application/json" -H "X-LiteFX-Request: 1" \
+  -X POST "$BASE/trips" -d '{"name":"Seoul"}' >/dev/null
+curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "Content-Type: application/json" -H "X-LiteFX-Request: 1" \
+  -X POST "$BASE/entities" -d "{\"contactId\":\"$CONTACT_ID\"}" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d['success']
+print('Added', d['entity']['name'], 'from saved people')
 "
 
 echo ""
