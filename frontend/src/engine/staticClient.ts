@@ -48,6 +48,7 @@ import {
   getStore,
   initStore,
   listTripSummaries,
+  loadSampleTrip,
   refreshDerivedForFx,
   renameTrip,
   runAsUser,
@@ -348,9 +349,16 @@ export const staticClient = {
       message: "Cleared. Add your own travelers and expenses.",
     };
   },
-  seed: async () => {
+  seed: async (opts?: { asNew?: boolean }) => {
     await boot();
-    asUser(() => seedStore());
+    asUser(() => {
+      if (opts?.asNew) {
+        const result = loadSampleTrip();
+        if ("error" in result) throw new Error(result.error);
+      } else {
+        seedStore();
+      }
+    });
     return { success: true, message: "Sample trip loaded." };
   },
   addEntity: async (body: {
@@ -395,7 +403,7 @@ export const staticClient = {
       const parsed = parseExpenseFields(body);
       const expense: Expense = {
         id: `exp-u${Math.random().toString(36).slice(2, 7)}`,
-        tripId: "trip-custom",
+        tripId: getStore().id,
         ...parsed,
       };
       addExpense(expense);

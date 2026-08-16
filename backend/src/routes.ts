@@ -18,6 +18,7 @@ import {
   toPublicUser,
   deleteSessionByTokenHash,
   persistenceStatus,
+  loadSampleTrip,
   listTripSummaries,
   currentTripSummary,
   createTrip,
@@ -444,7 +445,7 @@ apiRouter.post("/expenses", (req, res) => {
   }
   const expense: Expense = {
     id: `exp-u${Math.random().toString(36).slice(2, 7)}`,
-    tripId: "trip-custom",
+    tripId: getStore().id,
     ...parsed,
   };
   addExpense(expense);
@@ -670,9 +671,23 @@ apiRouter.post("/clear", (_req, res) => {
 });
 
 // ── POST /api/seed — load the sample trip ──
-apiRouter.post("/seed", (_req, res) => {
-  seedStore();
-  res.json({ success: true, message: "Sample trip loaded." });
+apiRouter.post("/seed", (req, res) => {
+  const asNew = !!(req.body as { asNew?: boolean } | undefined)?.asNew;
+  if (asNew) {
+    const result = loadSampleTrip();
+    if ("error" in result) {
+      res.status(400).json({ success: false, message: result.error });
+      return;
+    }
+  } else {
+    seedStore();
+  }
+  res.json({
+    success: true,
+    message: "Sample trip loaded.",
+    trip: currentTripSummary(),
+    trips: listTripSummaries(),
+  });
 });
 
 apiRouter.post("/trips", (req, res) => {

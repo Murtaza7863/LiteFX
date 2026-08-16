@@ -276,6 +276,18 @@ export function validateTripName(raw: string | undefined): string | null {
   return name;
 }
 
+function uniqueTripName(ws: UserWorkspace, base: string): string {
+  const taken = new Set(
+    Object.values(ws.trips).map((t) => t.name.toLowerCase()),
+  );
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let n = 2; n < 200; n++) {
+    const candidate = `${base} (${n})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${base} ${Date.now()}`;
+}
+
 function inferTripName(state: StoreState): string {
   const hay = (state.expenses ?? [])
     .map((e) => e.description)
@@ -445,9 +457,7 @@ function save(): void {
   if (!app) return;
   const uid = als.getStore();
   if (uid && app.workspaces[uid]) {
-    const ws = app.workspaces[uid];
-    const trip = ws.trips[ws.activeTripId];
-    if (trip) trip.updatedAt = nowIso();
+    currentTrip().updatedAt = nowIso();
   }
   if (persistence) {
     void persistence
@@ -598,7 +608,7 @@ export function getApp(): AppState {
   return app!;
 }
 
-export function getStore(): StoreState {
+export function getStore(): TripRecord {
   initStore();
   return currentTrip();
 }
@@ -611,18 +621,33 @@ export function runAsTrip<T>(tripId: string, fn: () => T): T {
   return tripAls.run(tripId, fn);
 }
 
-export function seedStore(): void {
+export function seedStore(name = SAMPLE_TRIP_NAME): void {
   initStore();
   const ws = ensureWorkspace(ownerId());
   const current = ws.trips[ws.activeTripId];
   const seeded = wrapTrip(sampleState(), {
     id: current.id,
-    name: SAMPLE_TRIP_NAME,
+    name,
   });
   seeded.createdAt = current.createdAt;
   seeded.updatedAt = nowIso();
+  seeded.expenses = seeded.expenses.map((e) => ({ ...e, tripId: current.id }));
   ws.trips[current.id] = seeded;
   save();
+}
+
+export function loadSampleTrip(): TripRecord | { error: string } {
+  initStore();
+  const ws = ensureWorkspace(ownerId());
+  const current = ws.trips[ws.activeTripId];
+  const occupied = current.entities.length > 0 || current.expenses.length > 0;
+  const name = uniqueTripName(ws, SAMPLE_TRIP_NAME);
+  if (occupied) {
+    const created = createTrip(name);
+    if ("error" in created) return created;
+  }
+  seedStore(occupied ? name : SAMPLE_TRIP_NAME);
+  return currentTrip();
 }
 
 export function resetApp(): void {
@@ -972,13 +997,13 @@ export function currentTripSummary(): TripSummary {
 
 export function createTrip(nameRaw?: string): TripRecord | { error: string } {
   initStore();
-  const name = validateTripName(nameRaw || "New trip");
-  if (!name) return { error: "Trip name must be 1–80 characters." };
+  const requested = validateTripName(nameRaw || "New trip");
+  if (!requested) return { error: "Trip name must be 1–80 characters." };
   const ws = ensureWorkspace(ownerId());
   if (Object.keys(ws.trips).length >= MAX_TRIPS) {
     return { error: `You can keep up to ${MAX_TRIPS} trips.` };
   }
-  const trip = blankTrip(name);
+  const trip = blankTrip(uniqueTripName(ws, requested));
   ws.trips[trip.id] = trip;
   ws.activeTripId = trip.id;
   save();

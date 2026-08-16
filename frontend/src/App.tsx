@@ -141,6 +141,8 @@ export default function App() {
       setEditExpenseId(null);
       setClaimModalToken(null);
       setDetailId(null);
+      setNettingResult(null);
+      setRailTypes([]);
       await fetchScenario();
       notify("Cleared — add your own travelers & expenses");
     } catch (e) {
@@ -149,27 +151,20 @@ export default function App() {
   }, [fetchScenario, notify]);
 
   const handleLoadSample = useCallback(async () => {
-    if (
-      scenario &&
-      (scenario.entities.length > 0 || scenario.expenses.length > 0) &&
-      !window.confirm(
-        "Replace this trip with the sample travelers and expenses?",
-      )
-    ) {
-      return;
-    }
     try {
-      await client.seed();
+      await client.seed({ asNew: true });
       setEditEntityId(null);
       setEditExpenseId(null);
       setClaimModalToken(null);
       setDetailId(null);
+      setNettingResult(null);
+      setRailTypes([]);
       await fetchScenario();
-      notify("Sample trip loaded");
+      notify("Sample trip opened");
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [fetchScenario, notify, scenario]);
+  }, [fetchScenario, notify]);
 
   const handleDeleteExpense = useCallback(
     async (id: string) => {
@@ -389,17 +384,21 @@ export default function App() {
     setEditExpenseId(null);
     setClaimModalToken(null);
     setDetailId(null);
+    setNettingResult(null);
+    setRailTypes([]);
     await fetchScenario();
   }, [fetchScenario]);
 
   const handleSelectTrip = useCallback(
     async (id: string) => {
+      setLoading("trip");
       try {
         await client.selectTrip(id);
         await switchTripView();
         notify("Opened trip");
       } catch (e) {
         setError((e as Error).message);
+        setLoading(null);
       }
     },
     [notify, switchTripView],
@@ -407,12 +406,14 @@ export default function App() {
 
   const handleCreateTrip = useCallback(
     async (name: string) => {
+      setLoading("trip");
       try {
         await client.createTrip(name);
         await switchTripView();
         notify(`Started ${name.trim()}`);
       } catch (e) {
         setError((e as Error).message);
+        setLoading(null);
       }
     },
     [notify, switchTripView],
@@ -440,12 +441,14 @@ export default function App() {
       ) {
         return;
       }
+      setLoading("trip");
       try {
         await client.deleteTrip(id);
         await switchTripView();
         notify("Trip deleted");
       } catch (e) {
         setError((e as Error).message);
+        setLoading(null);
       }
     },
     [notify, switchTripView],
@@ -576,7 +579,7 @@ export default function App() {
 
   const graphBlock = (
     <Collapsible
-      key={hasNetted ? "netted" : "raw"}
+      key={`${scenario.trip?.id}-${hasNetted ? "netted" : "raw"}`}
       title="Who owes whom"
       sub={
         hasNetted
@@ -589,7 +592,7 @@ export default function App() {
       }
     >
       <DebtGraph
-        key={hasNetted ? "netted" : "raw"}
+        key={`${scenario.trip?.id}-${hasNetted ? "netted" : "raw"}`}
         entities={scenario.entities}
         debtEdges={scenario.debtEdges}
         obligations={obligations}
@@ -602,6 +605,8 @@ export default function App() {
   const tripPanel = (
     <section className="glass animate-fade-in-up scroll-mt-24 space-y-4 rounded-2xl p-4 sm:p-5">
       <AddDataForms
+        tripName={scenario.trip?.name ?? "Trip"}
+        locked={loading !== null}
         entities={scenario.entities}
         expenses={scenario.expenses}
         expenseCount={scenario.expenses.length}
@@ -623,16 +628,24 @@ export default function App() {
       <ScenarioOverview
         entities={scenario.entities}
         expenses={scenario.expenses}
-        onDeleteTraveler={handleDeleteTraveler}
-        onDeleteExpense={handleDeleteExpense}
-        onEditTraveler={(id) => {
-          setEditExpenseId(null);
-          setEditEntityId(id);
-        }}
-        onEditExpense={(id) => {
-          setEditEntityId(null);
-          setEditExpenseId(id);
-        }}
+        onDeleteTraveler={loading !== null ? undefined : handleDeleteTraveler}
+        onDeleteExpense={loading !== null ? undefined : handleDeleteExpense}
+        onEditTraveler={
+          loading !== null
+            ? undefined
+            : (id) => {
+                setEditExpenseId(null);
+                setEditEntityId(id);
+              }
+        }
+        onEditExpense={
+          loading !== null
+            ? undefined
+            : (id) => {
+                setEditEntityId(null);
+                setEditExpenseId(id);
+              }
+        }
       />
     </section>
   );

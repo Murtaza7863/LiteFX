@@ -270,7 +270,8 @@ export const httpClient = {
       { payoutMethod },
     ),
   clear: () => api<{ success: boolean; message: string }>("/clear", "POST"),
-  seed: () => api<{ success: boolean; message: string }>("/seed", "POST"),
+  seed: (opts?: { asNew?: boolean }) =>
+    api<{ success: boolean; message: string }>("/seed", "POST", opts),
   addEntity: (body: {
     name: string;
     country: string;

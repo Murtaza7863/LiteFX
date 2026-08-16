@@ -10,6 +10,7 @@ import {
   deleteTrip,
   getStore,
   listTripSummaries,
+  loadSampleTrip,
   normalizeApp,
   refreshDerivedForFx,
   renameTrip,
@@ -23,7 +24,7 @@ import {
 import { expense, loadTrip, traveler } from "./testUtil.js";
 import { runNetting } from "./agents/netting.js";
 import { runRouting } from "./agents/railRouter.js";
-import { settleObligation } from "./agents/claimLink.js";
+import { settleObligation, claimWithPayoutMethod } from "./agents/claimLink.js";
 
 afterEach(() => {
   resetApp();
@@ -396,15 +397,43 @@ test("named trips stay isolated and claim links follow the source trip", () => {
   assert.ok(claimed);
   assert.equal(claimed.entities.length, 6);
   assert.ok(claimed.claimLinks.some((c) => c.token === issued.link?.token));
+  assert.equal(getStore().id, (created as { id: string }).id);
+
+  const tokyoStamp = currentTripSummary().updatedAt;
+  const paid = withClaimTrip(issued.link.token, () =>
+    claimWithPayoutMethod(issued.link.token, "GrabPay"),
+  );
+  assert.equal(paid?.success, true);
+  assert.equal(currentTripSummary().updatedAt, tokyoStamp);
+  assert.equal(getStore().ledger.length, 0);
 
   assert.equal(selectTrip(bangkok.id), true);
   assert.equal(getStore().entities.length, 6);
+  assert.equal(getStore().ledger.length, 1);
   const renamed = renameTrip(bangkok.id, "Bangkok with friends");
   assert.equal("error" in renamed, false);
   assert.equal(currentTripSummary().name, "Bangkok with friends");
   assert.equal("ok" in deleteTrip((created as { id: string }).id), true);
   assert.equal(listTripSummaries().length, 1);
   assert.equal("error" in deleteTrip(bangkok.id), true);
+});
+
+test("loading the sample as a new trip keeps the one you were editing", () => {
+  seedStore();
+  assert.equal(getStore().expenses[0]?.tripId, getStore().id);
+  const first = currentTripSummary();
+  const again = loadSampleTrip();
+  assert.equal("error" in again, false);
+  assert.equal(listTripSummaries().length, 2);
+  assert.notEqual((again as { id: string }).id, first.id);
+  assert.match((again as { name: string }).name, /Bangkok Trip 2026/);
+  assert.equal(selectTrip(first.id), true);
+  assert.equal(getStore().entities.length, 6);
+
+  const extra = createTrip("New trip");
+  assert.equal((extra as { name: string }).name, "New trip");
+  const extra2 = createTrip("New trip");
+  assert.equal((extra2 as { name: string }).name, "New trip (2)");
 });
 
 test("normalizeApp migrates a v2 single-trip file", () => {

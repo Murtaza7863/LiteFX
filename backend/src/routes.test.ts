@@ -562,3 +562,25 @@ test("trips can be created, renamed, switched, and listed in scenario", async ()
   assert.equal(removed.status, 200, removed.body.message);
   assert.equal(removed.body.trips.length, 1);
 });
+
+test("POST /seed asNew opens a sample without wiping the current trip", async () => {
+  await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "Sam", country: "US" }),
+  });
+  const seeded = await json("/seed", {
+    method: "POST",
+    body: JSON.stringify({ asNew: true }),
+  });
+  assert.equal(seeded.status, 200, seeded.body.message);
+  assert.equal(seeded.body.trips.length, 2);
+  assert.equal(seeded.body.trip.name, "Bangkok Trip 2026");
+  const other = seeded.body.trips.find(
+    (t: { id: string }) => t.id !== seeded.body.trip.id,
+  );
+  assert.ok(other);
+  assert.equal(other.travelerCount, 1);
+  await json(`/trips/${other.id}/select`, { method: "POST" });
+  const opened = await json("/scenario");
+  assert.equal(opened.body.entities[0].name, "Sam");
+});

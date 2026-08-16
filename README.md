@@ -31,7 +31,7 @@ Without `DATABASE_URL`, the server still runs and falls back to JSON. Render’s
 
 ## Demo Flow (under 2 minutes)
 
-1. **Open or name a trip** — start a blank one, or load the sample (6 travelers across Singapore, Thailand, the US, and Germany). Past trips stay in the header.
+1. **Open or name a trip** — start a blank one, or open the sample (6 travelers across Singapore, Thailand, the US, and Germany). Opening the sample keeps any trip you already started. Past trips stay in the header.
 2. **Type an expense title** — “Grab to the airport” classifies as Transport before you pick a category.
 3. **Click Net & route** — pairwise IOUs collapse into a handful of transfers, each with a rail and fee.
 4. **Open a transfer → Try another rail** — switch a PromptPay (0%) payout to USDC (1.5%) and watch the fee jump.

@@ -35,7 +35,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
     setError(null);
     try {
       const user = await client.demo();
-      await client.seed();
+      await client.seed({ asNew: true });
       onAuthed(user);
     } catch (e) {
       setError((e as Error).message);
@@ -63,7 +63,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
             each corridor.{" "}
             {isStaticEngine
               ? "This browser demo stays on this device"
-              : "Your trip is saved to your account"}{" "}
+              : "Your trips are saved to your account"}{" "}
             — no real money moves.
           </p>
           {error && <p className="mt-4 text-sm text-[#c48878]">{error}</p>}

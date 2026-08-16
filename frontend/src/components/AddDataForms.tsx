@@ -26,6 +26,8 @@ function railForCountry(country: string, stored?: string): string {
 }
 
 interface Props {
+  tripName?: string;
+  locked?: boolean;
   entities: Entity[];
   expenses: Expense[];
   expenseCount: number;
@@ -38,7 +40,20 @@ interface Props {
   onCancelEdit?: () => void;
 }
 
-function downloadCsv(entities: Entity[], expenses: Expense[]) {
+function slug(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "trip"
+  );
+}
+
+function downloadCsv(
+  entities: Entity[],
+  expenses: Expense[],
+  tripName: string,
+) {
   const nameOf = (id: string) =>
     entities.find((e) => e.id === id)?.name.trim() ?? id;
   const rows = [
@@ -68,12 +83,14 @@ function downloadCsv(entities: Entity[], expenses: Expense[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "litefx-trip.csv";
+  a.download = `litefx-${slug(tripName)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 export function AddDataForms({
+  tripName = "Trip",
+  locked = false,
   entities,
   expenses,
   expenseCount,
@@ -333,8 +350,8 @@ export function AddDataForms({
     <div ref={rootRef} className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-slate-100 text-[1.25rem] font-semibold tracking-[-0.03em]">
-            Trip
+          <h2 className="font-display text-slate-100 truncate text-[1.25rem] font-semibold tracking-[-0.03em]">
+            {tripName}
           </h2>
           <p className="text-slate-500 mt-0.5 text-xs">
             {entities.length} traveler{entities.length === 1 ? "" : "s"} ·{" "}
@@ -349,6 +366,7 @@ export function AddDataForms({
               className="btn-ghost !px-2 !py-1.5"
               title="Trip actions"
               aria-expanded={menuOpen}
+              disabled={locked}
             >
               <IconMore className="h-4 w-4" />
             </button>
@@ -362,14 +380,14 @@ export function AddDataForms({
                   }}
                   className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm"
                 >
-                  Load sample
+                  Open sample trip
                 </button>
                 {expenses.length > 0 && (
                   <button
                     type="button"
                     onClick={() => {
                       setMenuOpen(false);
-                      downloadCsv(entities, expenses);
+                      downloadCsv(entities, expenses, tripName);
                     }}
                     className="hover:bg-white/[0.05] text-slate-300 flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
                   >
@@ -400,6 +418,7 @@ export function AddDataForms({
               onCancelEdit?.();
               setOpen("traveler");
             }}
+            disabled={locked}
             className={`btn-ghost !px-3 !py-1.5 text-xs ${
               open === "traveler" ? "bg-white/[0.08]" : ""
             }`}
@@ -418,7 +437,7 @@ export function AddDataForms({
               resetExpenseForm();
               setOpen("expense");
             }}
-            disabled={entities.length === 0}
+            disabled={locked || entities.length === 0}
             title={
               entities.length === 0 ? "Add a traveler first" : "Add an expense"
             }

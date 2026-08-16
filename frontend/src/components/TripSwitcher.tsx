@@ -81,9 +81,9 @@ export function TripSwitcher({
 
   const submitName = () => {
     const next = name.trim();
-    if (!next || !current) return;
+    if (!next) return;
     if (mode === "new") onCreate(next);
-    else onRename(current.id, next);
+    else if (current) onRename(current.id, next);
     setOpen(false);
     setMode("list");
     setName("");

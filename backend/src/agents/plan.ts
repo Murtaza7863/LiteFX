@@ -27,7 +27,7 @@ export function buildSettlementPlan(): SettlementPlan {
   const nameOf = (id: string) =>
     st.entities.find((e) => e.id === id)?.name.trim() || id;
 
-  const lines: string[] = ["LiteFX settlement plan"];
+  const lines: string[] = [`LiteFX settlement plan — ${st.name}`];
   if (st.nettingSummary) {
     lines.push(
       `${st.nettingSummary.netEdgeCount} transfers (from ${st.nettingSummary.rawEdgeCount} pairwise debts)`,
