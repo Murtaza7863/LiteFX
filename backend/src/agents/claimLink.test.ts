@@ -15,6 +15,7 @@ import {
 } from "./claimLink.js";
 import { runNetting } from "./netting.js";
 import { runRouting } from "./railRouter.js";
+import { dropAccount } from "../testUtil.js";
 
 afterEach(() => {
   clearStore();
@@ -26,11 +27,18 @@ function seedRouted() {
   runRouting();
 }
 
+function seedClaimRouted() {
+  seedStore();
+  dropAccount("ent-eve");
+  runNetting();
+  runRouting();
+}
+
 function claimObligation() {
   const ob = getStore().netObligations.find(
     (o) => o.chosenRail === "claim_link",
   );
-  assert.ok(ob, "sample trip should produce a claim_link obligation");
+  assert.ok(ob, "unlinked Eve should produce a claim_link obligation");
   return ob!;
 }
 
@@ -52,7 +60,7 @@ test("Clear all drops seed invoices so recon cannot use stale vendors", () => {
 });
 
 test("settling a claim_link twice reuses the same token", () => {
-  seedRouted();
+  seedClaimRouted();
   const ob = claimObligation();
   const first = settleObligation(ob.id);
   const second = settleObligation(ob.id);
@@ -101,7 +109,7 @@ test("settling a local rail writes one ledger row and cannot settle twice", () =
 });
 
 test("claiming a payout settles once and a second claim is rejected", () => {
-  seedRouted();
+  seedClaimRouted();
   const ob = claimObligation();
   const settled = settleObligation(ob.id);
   const token = settled.link!.token;
@@ -125,7 +133,7 @@ test("unknown claim token is rejected", () => {
 });
 
 test("expired claim links cannot be paid out", () => {
-  seedRouted();
+  seedClaimRouted();
   const ob = claimObligation();
   const token = settleObligation(ob.id).link!.token;
   updateClaimLink(token, {
@@ -139,7 +147,7 @@ test("expired claim links cannot be paid out", () => {
 });
 
 test("re-running netting drops old claim links so IDs cannot be reused", () => {
-  seedRouted();
+  seedClaimRouted();
   const ob = claimObligation();
   settleObligation(ob.id);
   assert.ok(getStore().claimLinks.length > 0);
@@ -155,6 +163,7 @@ function getNetStatus(id: string) {
 
 test("claim payouts follow the recipient's country after a move to Bahrain", () => {
   seedStore();
+  dropAccount("ent-eve");
   updateEntity("ent-eve", { country: "BH" });
   runNetting();
   runRouting();

@@ -54,69 +54,31 @@ print(f'Raw: {d[\"rawEdgeCount\"]} -> Net: {d[\"netEdgeCount\"]} (ratio {d[\"red
 print(f'Corridor savings vs Splitwise: \${d.get(\"corridorSavingsUsd\", 0):.2f}')
 print(f'Rail types: {d[\"railTypesExercised\"]}')
 rails = set(o.get('chosenRail') for o in d['obligations'])
-assert 'claim_link' in rails, 'expected a claim_link obligation for Eve'
-assert 'local' in rails, 'expected a local TH→TH rail'
+assert 'claim_link' not in rails, 'sample crew all have accounts — no claim_link'
+assert 'local' in rails, 'expected a local TH→TH or SG→SG rail'
 "
 
 echo ""
-echo "=== 5. Find and settle claim_link obligation ==="
-CLAIM_ID=$(curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" "$BASE/scenario" | python3 -c "
+echo "=== 5. Settle a local transfer ==="
+SETTLE_ID=$(curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" "$BASE/scenario" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 for o in d['netObligations']:
-    if o.get('chosenRail') == 'claim_link':
+    if o.get('chosenRail') == 'local':
         print(o['id'])
         break
 ")
-echo "Claim obligation: $CLAIM_ID"
+echo "Local obligation: $SETTLE_ID"
 curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-LiteFX-Request: 1" \
-  -X POST "$BASE/settlement/$CLAIM_ID/settle" | python3 -c "
+  -X POST "$BASE/settlement/$SETTLE_ID/settle" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 print(f'Success: {d[\"success\"]} - {d[\"message\"]}')
 assert d['success']
-assert d.get('link', {}).get('token'), 'settle should return the claim link'
 "
 
 echo ""
-echo "=== 6. Get claim token ==="
-TOKEN=$(curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" "$BASE/scenario" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-for o in d['netObligations']:
-    if o.get('claimToken'):
-        print(o['claimToken'])
-        break
-")
-echo "Token: ${TOKEN:0:25}..."
-
-echo ""
-echo "=== 7. Open claim link (no session) ==="
-curl -sf "$BASE/claim/$TOKEN" | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-print(f'Recipient: {d[\"recipient\"][\"name\"]}')
-print(f'Amount: {d[\"obligation\"][\"amountUsd\"]:.2f} USD')
-print(f'Payout options: {len(d[\"payoutOptions\"])}')
-print(f'Status: {d[\"link\"][\"status\"]}')
-"
-
-echo ""
-echo "=== 8. Claim with payout method ==="
-curl -sf -H "Content-Type: application/json" \
-  -X POST "$BASE/claim/$TOKEN/claim" \
-  -d '{"payoutMethod": "GrabPay"}' | python3 -c "
-import sys,json
-d=json.load(sys.stdin)
-print(f'Success: {d[\"success\"]}')
-print(f'Message: {d[\"message\"]}')
-print(f'Link status: {d[\"link\"][\"status\"]}')
-print(f'Payout method: {d[\"link\"][\"payoutMethod\"]}')
-assert d['success']
-"
-
-echo ""
-echo "=== 9. Save crew and reuse on a new trip ==="
+echo "=== 6. Save crew and reuse on a new trip ==="
 CONTACT_ID=$(curl -sf -c "$COOKIE_JAR" -b "$COOKIE_JAR" -H "X-LiteFX-Request: 1" \
   -X POST "$BASE/contacts/save-crew" | python3 -c "
 import sys,json

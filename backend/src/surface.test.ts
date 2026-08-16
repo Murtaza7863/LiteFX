@@ -203,7 +203,12 @@ test("every listed API action a judge can click stays corridor-legal", async () 
   });
   assert.equal(asNew.status, 200);
   await json("/engine/run", { method: "POST" });
-  body = await scenario("asNew");
+  const unlinkedEve = await json("/entities/ent-eve", {
+    method: "PATCH",
+    body: JSON.stringify({ railType: null }),
+  });
+  assert.equal(unlinkedEve.status, 200);
+  body = await scenario("asNew unlink eve");
 
   const claimOb = body.netObligations.find(
     (o: { chosenRail?: string }) => o.chosenRail === "claim_link",

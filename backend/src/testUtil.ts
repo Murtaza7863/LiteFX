@@ -6,7 +6,13 @@ import {
   linkedKey,
   sharedLocalRail,
 } from "./data/countries.js";
-import { addEntity, addExpense, clearStore, getStore } from "./store.js";
+import {
+  addEntity,
+  addExpense,
+  clearStore,
+  getStore,
+  updateEntity,
+} from "./store.js";
 
 export function traveler(
   id: string,
@@ -44,6 +50,13 @@ export function loadTrip(entities: Entity[], expenses: Expense[] = []): void {
   clearStore();
   for (const e of entities) addEntity(e);
   for (const x of expenses) addExpense(x);
+}
+
+/** Strip a linked rail so tests can exercise claim-link without putting it on the sample trip. */
+export function dropAccount(id: string): void {
+  const e = updateEntity(id, { linkedRailAliases: [] });
+  assert.ok(e, id);
+  assert.equal(e.linkedRailAliases.length, 0);
 }
 
 /** Every linked rail and every chosen corridor must be possible for those two countries. */

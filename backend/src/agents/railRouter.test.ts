@@ -7,7 +7,7 @@ import {
   updateEntity,
   updateNetObligation,
 } from "../store.js";
-import { traveler, assertCorridorsLegal } from "../testUtil.js";
+import { traveler, assertCorridorsLegal, dropAccount } from "../testUtil.js";
 import { runNetting } from "./netting.js";
 import {
   getRailTypesExercised,
@@ -26,22 +26,23 @@ afterEach(() => {
   clearStore();
 });
 
-test("sample trip routing exercises claim_link, local, and a priced rail", () => {
+test("sample trip routing exercises local, linked, and USDC", () => {
   seedStore();
   runNetting();
   const obs = runRouting();
   assert.ok(obs.every((o) => o.status === "routed"));
   const types = new Set(getRailTypesExercised());
-  assert.ok(types.has("claim_link"), "Eve has no account");
-  assert.ok(types.has("local"), "TH→TH should be local");
+  assert.ok(types.has("local"), "TH→TH or SG→SG should be local");
   assert.ok(
     types.has("linked") || types.has("stable_bridge"),
     "cross-border leftovers should be linked or USDC",
   );
+  assert.ok(!types.has("claim_link"), "sample crew all have accounts");
 });
 
 test("obligation to a recipient with no account is claim_link and marked ineligible on other rails", () => {
   seedStore();
+  dropAccount("ent-eve");
   runNetting();
   runRouting();
   const eve = getStore().netObligations.find((o) => o.to === "ent-eve");
@@ -114,8 +115,9 @@ test("overrideRail rejects a settled transfer", () => {
   assert.throws(() => overrideRail(ob.id, "USDC Bridge (Circle)"), /settled/);
 });
 
-test("linking Eve's account re-routes her claim_link onto PayNow without wiping nets", () => {
+test("linking a traveler's account re-routes her claim_link onto PayNow without wiping nets", () => {
   seedStore();
+  dropAccount("ent-eve");
   runNetting();
   runRouting();
   const before = getStore().netObligations.length;
@@ -176,17 +178,13 @@ test("moving Bob to Bahrain never asks a Bahrain payer to use PayNow", () => {
   assertBahrainNeverUsesPayNow();
 });
 
-test("moving Eve to Bahrain offers Fawri+ claim payouts, not PayNow", () => {
+test("moving Eve to Bahrain remaps PayNow to Fawri+", () => {
   seedStore();
-  updateEntity("ent-eve", { country: "BH" });
+  const eve = updateEntity("ent-eve", { country: "BH" });
+  assert.equal(eve?.linkedRailAliases[0]?.railType, "Fawri+");
   runNetting();
   runRouting();
   assertBahrainNeverUsesPayNow();
-  const eve = getStore().netObligations.find((o) => o.to === "ent-eve");
-  assert.equal(eve?.chosenRail, "claim_link");
-  const opts = payoutOptionsFor("BH");
-  assert.ok(opts.some((o) => /Fawri/i.test(o)));
-  assert.ok(!opts.some((o) => /PayNow/i.test(o)));
 });
 
 test("moving Alice to any listed country remaps PayNow and only routes legal corridors", () => {
@@ -204,35 +202,25 @@ test("moving Alice to any listed country remaps PayNow and only routes legal cor
     runNetting();
     runRouting();
     assertCorridorsLegal();
-    const evePay = getStore().netObligations.find((o) => o.to === "ent-eve");
-    if (evePay?.chosenRail === "claim_link") {
-      const opts = payoutOptionsFor("SG");
-      assert.ok(opts.some((o) => /PayNow/i.test(o)));
-    }
     clearStore();
   }
 });
 
-test("moving Eve to any listed country offers that country's payouts, not leftover PayNow", () => {
+test("moving Eve to any listed country remaps her rail and stays legal", () => {
   for (const c of COUNTRIES) {
     seedStore();
-    updateEntity("ent-eve", { country: c.code });
+    const eve = updateEntity("ent-eve", { country: c.code });
+    assert.ok(eve, c.code);
+    assert.ok(
+      canonicalizeRail(c.code, eve.linkedRailAliases[0]?.railType),
+      `${c.code} kept ${eve.linkedRailAliases[0]?.railType}`,
+    );
+    if (c.code !== "SG") {
+      assert.equal(eve.linkedRailAliases[0]?.railType, primaryRail(c.code));
+    }
     runNetting();
     runRouting();
     assertCorridorsLegal();
-    const eve = getStore().netObligations.find((o) => o.to === "ent-eve");
-    assert.equal(eve?.chosenRail, "claim_link", c.code);
-    const opts = payoutOptionsFor(c.code);
-    assert.ok(
-      opts.some((o) => o.includes(primaryRail(c.code))),
-      `${c.code} missing ${primaryRail(c.code)}`,
-    );
-    if (c.code !== "SG") {
-      assert.ok(
-        !opts.some((o) => /PayNow/i.test(o)),
-        `${c.code} still offered PayNow`,
-      );
-    }
     clearStore();
   }
 });

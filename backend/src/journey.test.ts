@@ -7,7 +7,7 @@ import {
   overrideRail,
   runRouting,
 } from "./agents/railRouter.js";
-import { claimWithPayoutMethod, settleObligation } from "./agents/claimLink.js";
+import { settleObligation } from "./agents/claimLink.js";
 import {
   addExpense,
   getStore,
@@ -15,9 +15,9 @@ import {
   runAsUser,
   seedStore,
 } from "./store.js";
-import { expense, traveler } from "./testUtil.js";
+import { expense } from "./testUtil.js";
 
-test("judge path: classify, net, override, link, settle, claim, keep history", () => {
+test("judge path: classify, net, override, link, settle, keep history", () => {
   resetApp();
   runAsUser("judge", () => {
     seedStore();
@@ -57,17 +57,6 @@ test("judge path: classify, net, override, link, settle, claim, keep history", (
     assert.ok(payable);
     assert.equal(settleObligation(payable.id).success, true);
     assert.ok(getStore().ledger.length >= 1);
-
-    const claimOb = getStore().netObligations.find(
-      (o) => o.chosenRail === "claim_link" && o.status === "routed",
-    );
-    if (claimOb) {
-      const settled = settleObligation(claimOb.id);
-      assert.equal(settled.success, true);
-      assert.ok(settled.link?.token);
-      const claimed = claimWithPayoutMethod(settled.link.token, "GrabPay");
-      assert.equal(claimed.success, true);
-    }
 
     const history = getStore().ledger.length;
     addExpense({

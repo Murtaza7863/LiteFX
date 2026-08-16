@@ -1,12 +1,6 @@
 import type { Entity, Expense, Invoice } from "../types";
 
-// ──────────────────────────────────────────────
-// Seeded scenario: 5 travelers across Singapore,
-// Thailand, the US, and Germany (Eurozone), plus
-// one extra traveler in Thailand.
-// Eve (SG) has NO linkedRailAliases — she forces a
-// claim_link flow.
-// ──────────────────────────────────────────────
+// Sample crew: SG, TH, US, DE. Everyone has a domestic rail.
 
 export const SEED_ENTITIES: Entity[] = [
   {
@@ -44,7 +38,7 @@ export const SEED_ENTITIES: Entity[] = [
     name: "Eve Lim",
     country: "SG",
     contact: { type: "phone", value: "+65-8000-9999" },
-    linkedRailAliases: [], // ← no account anywhere → forces claim_link
+    linkedRailAliases: [{ railType: "PayNow", alias: "+6580009999" }],
   },
   {
     id: "ent-frank",
@@ -55,28 +49,10 @@ export const SEED_ENTITIES: Entity[] = [
   },
 ];
 
-// ──────────────────────────────────────────────
-// Expenses for the "Bangkok Trip 2026".
-// Each expense is split equally among all participants.
-// Designed so that after netting, the resulting obligations
-// exercise all four rail types (local, linked, claim_link,
-// stable_bridge).
-//
-// Net balances (in USD, the reference currency):
-//   Alice  (SG) :  -217.30  (debtor)
-//   Bob    (TH) :  -243.80  (debtor)
-//   Charlie(US) :  +473.50  (creditor)
-//   Diana  (DE) :  -360.30  (debtor)
-//   Eve    (SG) :   +41.70  (creditor, no account → claim_link)
-//   Frank  (TH) :  +306.20  (creditor)
-//
-// Net obligations (5, corridor-aware matching):
-//   1. Bob    → Frank   : local        (TH↔TH, 0%)
-//   2. Alice  → Frank   : linked       (SG↔TH, 0.5%)
-//   3. Alice  → Eve     : claim_link   (Eve has no account)
-//   4. Diana  → Charlie : stable_bridge (DE↔US)
-//   5. Alice  → Charlie : stable_bridge (SG↔US)
-// ──────────────────────────────────────────────
+// Bangkok Trip 2026. After netting (USD):
+//   Alice −217.30, Bob −243.80, Diana −360.30
+//   Charlie +473.50, Eve +41.70, Frank +306.20
+// Typical rails: TH→TH PromptPay, SG→TH PayNow↔PromptPay, SG→SG PayNow, else USDC.
 
 export const SEED_EXPENSES: Expense[] = [
   {
@@ -190,10 +166,6 @@ export const SEED_EXPENSES: Expense[] = [
     description: "Rooftop cocktails",
   },
 ];
-
-// ──────────────────────────────────────────────
-// B2B invoices for the reconciliation view.
-// ──────────────────────────────────────────────
 
 export const SEED_INVOICES: Invoice[] = [
   {

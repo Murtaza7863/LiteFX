@@ -17,6 +17,7 @@ frontend/dist/
 # Runtime state (persisted store)
 backend/data/db.json
 backend/data/db.test.json
+backend/data/db.flow.test.json
 
 # Logs
 *.log

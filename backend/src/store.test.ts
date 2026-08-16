@@ -27,7 +27,7 @@ import {
   updateExpense,
   withClaimTrip,
 } from "./store.js";
-import { expense, loadTrip, traveler } from "./testUtil.js";
+import { expense, loadTrip, traveler, dropAccount } from "./testUtil.js";
 import { runNetting } from "./agents/netting.js";
 import { linkRecipientAccount, runRouting } from "./agents/railRouter.js";
 import { settleObligation, claimWithPayoutMethod } from "./agents/claimLink.js";
@@ -384,6 +384,7 @@ test("editing an expense amount recomputes debts and clears nets", () => {
 
 test("named trips stay isolated and claim links follow the source trip", () => {
   seedStore();
+  dropAccount("ent-eve");
   runNetting();
   runRouting();
   const bangkok = currentTripSummary();

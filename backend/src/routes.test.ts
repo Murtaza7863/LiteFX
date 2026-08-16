@@ -5,7 +5,7 @@ import type { Server } from "node:http";
 import { apiRouter } from "./routes.js";
 import { pagesRouter } from "./pages.js";
 import { getClaimLink, resetApp, runAsUser, seedStore } from "./store.js";
-import { loadTrip, traveler } from "./testUtil.js";
+import { loadTrip, traveler, dropAccount } from "./testUtil.js";
 import { resetAuthLimits } from "./auth.js";
 
 let server: Server;
@@ -266,7 +266,11 @@ test("POST /engine/run nets and routes the sample trip", async () => {
   assert.equal(status, 200);
   assert.ok(body.netEdgeCount > 0);
   assert.ok(body.netEdgeCount < body.rawEdgeCount);
-  assert.ok(body.railTypesExercised.includes("claim_link"));
+  assert.ok(!body.railTypesExercised.includes("claim_link"));
+  assert.ok(
+    body.railTypesExercised.includes("local") ||
+      body.railTypesExercised.includes("linked"),
+  );
   assert.ok(
     body.obligations.every((o: { status: string }) => o.status === "routed"),
   );
@@ -288,7 +292,10 @@ test("POST /claim/:token/claim requires a payout method", async () => {
 });
 
 test("GET /claim/:token marks a past-due pending link expired", async () => {
-  asUser(() => seedStore());
+  asUser(() => {
+    seedStore();
+    dropAccount("ent-eve");
+  });
   await json("/engine/run", { method: "POST" });
   const scenario = await json("/scenario");
   const claimOb = scenario.body.netObligations.find(
@@ -429,19 +436,22 @@ test("PATCH /expenses/:id updates amount and category", async () => {
   assert.equal(scenario.body.debtEdges[0].amount, 27.5);
 });
 
-test("sample trip plan after engine run includes Eve's link-account tip", async () => {
+test("sample trip plan after engine run has no Eve link-account tip", async () => {
   asUser(() => seedStore());
   await json("/engine/run", { method: "POST" });
   const { body } = await json("/scenario");
   assert.ok(
-    body.plan.insights.some(
+    !body.plan.insights.some(
       (i: { recipientName: string }) => i.recipientName === "Eve Lim",
     ),
   );
 });
 
 test("GET /claim/:token works without a session cookie", async () => {
-  asUser(() => seedStore());
+  asUser(() => {
+    seedStore();
+    dropAccount("ent-eve");
+  });
   await json("/engine/run", { method: "POST" });
   const scenario = await json("/scenario");
   const claimOb = scenario.body.netObligations.find(
@@ -564,8 +574,11 @@ test("cookie mutations without the request header are blocked", async () => {
   assert.match(blocked.message, /cross-origin/i);
 });
 
-test("POST /entities/:id/link-account turns Eve's claim into local PayNow", async () => {
-  asUser(() => seedStore());
+test("POST /entities/:id/link-account turns a claim into local PayNow", async () => {
+  asUser(() => {
+    seedStore();
+    dropAccount("ent-eve");
+  });
   await json("/engine/run", { method: "POST" });
   const { status, body } = await json("/entities/ent-eve/link-account", {
     method: "POST",
