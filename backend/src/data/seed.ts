@@ -32,7 +32,7 @@ export const SEED_ENTITIES: Entity[] = [
   },
   {
     id: "ent-diana",
-    name: " Diana Weber",
+    name: "Diana Weber",
     country: "DE",
     contact: { type: "email", value: "diana@email.de" },
     linkedRailAliases: [{ railType: "sepa", alias: "DE89370400440532013000" }],
@@ -46,7 +46,7 @@ export const SEED_ENTITIES: Entity[] = [
   },
   {
     id: "ent-frank",
-    name: " Frank Chaem",
+    name: "Frank Chaem",
     country: "TH",
     contact: { type: "phone", value: "+66-81-555-0000" },
     linkedRailAliases: [{ railType: "promptpay", alias: "+66815550000" }],
@@ -68,19 +68,26 @@ export const SEED_ENTITIES: Entity[] = [
 //   Eve    (SG) :   +41.70  (creditor, no account → claim_link)
 //   Frank  (TH) :  +306.20  (creditor)
 //
-// Net obligations (5, from ~30 raw debt edges):
-//   1. Diana  → Charlie : stable_bridge (DE↔US)
-//   2. Bob    → Charlie : stable_bridge (TH↔US)
-//   3. Bob    → Frank   : local        (TH↔TH)
-//   4. Alice  → Frank   : linked       (SG↔TH)
-//   5. Alice  → Eve     : claim_link   (Eve has no account)
+// Net obligations (5, corridor-aware matching):
+//   1. Bob    → Frank   : local        (TH↔TH, 0%)
+//   2. Alice  → Frank   : linked       (SG↔TH, 0.5%)
+//   3. Alice  → Eve     : claim_link   (Eve has no account)
+//   4. Diana  → Charlie : stable_bridge (DE↔US)
+//   5. Alice  → Charlie : stable_bridge (SG↔US)
 // ──────────────────────────────────────────────
 
 export const SEED_EXPENSES: Expense[] = [
   {
     id: "exp-1",
     payerId: "ent-frank",
-    participantIds: ["ent-alice", "ent-bob", "ent-charlie", "ent-diana", "ent-eve", "ent-frank"],
+    participantIds: [
+      "ent-alice",
+      "ent-bob",
+      "ent-charlie",
+      "ent-diana",
+      "ent-eve",
+      "ent-frank",
+    ],
     amount: 9000,
     currency: "THB",
     tripId: "trip-bkk-2026",
@@ -130,7 +137,14 @@ export const SEED_EXPENSES: Expense[] = [
   {
     id: "exp-6",
     payerId: "ent-charlie",
-    participantIds: ["ent-alice", "ent-bob", "ent-charlie", "ent-diana", "ent-eve", "ent-frank"],
+    participantIds: [
+      "ent-alice",
+      "ent-bob",
+      "ent-charlie",
+      "ent-diana",
+      "ent-eve",
+      "ent-frank",
+    ],
     amount: 240,
     currency: "USD",
     tripId: "trip-bkk-2026",
@@ -140,7 +154,13 @@ export const SEED_EXPENSES: Expense[] = [
   {
     id: "exp-7",
     payerId: "ent-eve",
-    participantIds: ["ent-alice", "ent-bob", "ent-diana", "ent-eve", "ent-frank"],
+    participantIds: [
+      "ent-alice",
+      "ent-bob",
+      "ent-diana",
+      "ent-eve",
+      "ent-frank",
+    ],
     amount: 8000,
     currency: "THB",
     tripId: "trip-bkk-2026",

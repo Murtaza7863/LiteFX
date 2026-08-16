@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { client } from "./api/client";
+
 import type {
   ComplianceFlag,
+  NettingResult,
   RailType,
   ReconciliationResult,
   ScenarioResponse,
 } from "./api/client";
-import { DebtGraph } from "./components/DebtGraph";
-import { ObligationCard } from "./components/ObligationCard";
-import { ObligationDetail } from "./components/ObligationDetail";
-import { LogoMark } from "./components/Logo";
-import { ClaimLinkModal } from "./components/ClaimLinkModal";
-import { ScenarioOverview } from "./components/ScenarioOverview";
-import { AddDataForms } from "./components/AddDataForms";
-import { ReconciliationView } from "./components/ReconciliationView";
-import { Stepper } from "./components/Stepper";
 import type { Step } from "./components/Stepper";
+
+import { client } from "./api/client";
+import { AddDataForms } from "./components/AddDataForms";
 import { Avatar } from "./components/Avatar";
+import { ClaimLinkModal } from "./components/ClaimLinkModal";
+import { DebtGraph } from "./components/DebtGraph";
 import {
   IconMerge,
   IconCompass,
@@ -28,20 +25,19 @@ import {
   IconCheckCircle,
   IconAlertTriangle,
 } from "./components/icons";
+import { LogoMark } from "./components/Logo";
+import { ObligationCard } from "./components/ObligationCard";
+import { ObligationDetail } from "./components/ObligationDetail";
+import { ReconciliationView } from "./components/ReconciliationView";
+import { ScenarioOverview } from "./components/ScenarioOverview";
+import { Stepper } from "./components/Stepper";
 import { COUNTRY_FLAGS } from "./lib/theme";
 
 export default function App() {
   const [scenario, setScenario] = useState<ScenarioResponse | null>(null);
-  const [nettingResult, setNettingResult] = useState<{
-    rawEdgeCount: number;
-    netEdgeCount: number;
-    reductionRatio: number;
-    transfersSaved: number;
-    rawTotalUsd: number;
-    netTotalUsd: number;
-    feeSavingsUsd: number;
-    balances: { entityId: string; entityName: string; netUsd: number }[];
-  } | null>(null);
+  const [nettingResult, setNettingResult] = useState<NettingResult | null>(
+    null,
+  );
   const [railTypes, setRailTypes] = useState<RailType[]>([]);
   const [complianceRan, setComplianceRan] = useState(false);
   const [complianceFlags, setComplianceFlags] = useState<ComplianceFlag[]>([]);
@@ -54,7 +50,9 @@ export default function App() {
   const [travelerSignal, setTravelerSignal] = useState(0);
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [toasts, setToasts] = useState<{ id: number; msg: string; kind: "ok" | "warn" }[]>([]);
+  const [toasts, setToasts] = useState<
+    { id: number; msg: string; kind: "ok" | "warn" }[]
+  >([]);
 
   const notify = useCallback((msg: string, kind: "ok" | "warn" = "ok") => {
     const id = Date.now() + Math.random();
@@ -80,15 +78,18 @@ export default function App() {
       // Rehydrate UI state from the persisted backend so a reload shows the
       // true progress (stepper, stats, legend) instead of a stale blank state.
       setNettingResult(s!.nettingSummary ?? null);
-      setRailTypes(
-        [...new Set(s!.netObligations.map((o) => o.chosenRail).filter(Boolean))] as RailType[]
-      );
+      setRailTypes([
+        ...new Set(s!.netObligations.map((o) => o.chosenRail).filter(Boolean)),
+      ] as RailType[]);
       setComplianceRan(!!s!.complianceRan);
       setComplianceFlags(s!.complianceFlags ?? []);
       setReconData(
         s!.reconciliationRan
-          ? { results: s!.reconciliationResults, vendorSummary: s!.vendorSummary }
-          : null
+          ? {
+              results: s!.reconciliationResults,
+              vendorSummary: s!.vendorSummary,
+            }
+          : null,
       );
       setError(null);
     } catch (e) {
@@ -107,7 +108,7 @@ export default function App() {
       fetchScenario();
       notify(msg);
     },
-    [fetchScenario, notify]
+    [fetchScenario, notify],
   );
 
   const handleClear = useCallback(async () => {
@@ -128,7 +129,7 @@ export default function App() {
       await fetchScenario();
       notify("Expense removed — debts recomputed");
     },
-    [fetchScenario, notify]
+    [fetchScenario, notify],
   );
 
   const handleDeleteTraveler = useCallback(
@@ -137,29 +138,42 @@ export default function App() {
       await fetchScenario();
       notify("Traveler removed");
     },
-    [fetchScenario, notify]
+    [fetchScenario, notify],
   );
 
   const handleNetting = async () => {
     setLoading("netting");
     try {
       const r = await client.runNetting();
-      setNettingResult({
-        rawEdgeCount: r.rawEdgeCount,
-        netEdgeCount: r.netEdgeCount,
-        reductionRatio: r.reductionRatio,
-        transfersSaved: r.transfersSaved,
-        rawTotalUsd: r.rawTotalUsd,
-        netTotalUsd: r.netTotalUsd,
-        feeSavingsUsd: r.feeSavingsUsd,
-        balances: r.balances,
-      });
+      setNettingResult(r);
       const s = await client.getScenario();
       setScenario(s);
       notify(`Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers`);
       setRailTypes([]);
       setComplianceRan(false);
       setComplianceFlags([]);
+      setReconData(null);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleEngine = async () => {
+    setLoading("engine");
+    try {
+      const r = await client.runEngine();
+      setNettingResult(r);
+      setRailTypes(r.railTypesExercised);
+      const s = await client.getScenario();
+      setScenario(s);
+      setComplianceRan(!!s.complianceRan);
+      setComplianceFlags(s.complianceFlags ?? []);
+      notify(
+        `Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers and routed them`,
+      );
       setReconData(null);
       setError(null);
     } catch (e) {
@@ -195,7 +209,12 @@ export default function App() {
       const r = await client.runCompliance();
       setComplianceFlags(r.flags);
       setComplianceRan(true);
-      notify(r.flags.length ? `${r.flags.length} compliance flag(s) raised` : "Compliance clear", r.flags.length ? "warn" : "ok");
+      notify(
+        r.flags.length
+          ? `${r.flags.length} compliance flag(s) raised`
+          : "Compliance clear",
+        r.flags.length ? "warn" : "ok",
+      );
       const s = await client.getScenario();
       setScenario(s);
       setError(null);
@@ -226,7 +245,21 @@ export default function App() {
       const res = await client.settle(id);
       const s = await client.getScenario();
       setScenario(s);
-      notify(res.message.includes("Claim link") ? "Claim link generated" : "Transfer settled");
+      if (!res.success) {
+        notify(res.message, "warn");
+        setError(null);
+        return;
+      }
+      if (res.link?.token) {
+        setClaimModalToken(res.link.token);
+        notify("Claim link generated");
+      } else {
+        notify(
+          res.message.includes("Claim link")
+            ? "Claim link generated"
+            : "Transfer settled",
+        );
+      }
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -237,7 +270,9 @@ export default function App() {
 
   const handleSettleAll = async () => {
     if (!scenario) return;
-    const routed = scenario.netObligations.filter((o) => o.status === "routed");
+    const routed = scenario.netObligations.filter(
+      (o) => o.status === "routed" && !o.claimToken,
+    );
     if (routed.length === 0) {
       notify("Nothing left to settle");
       return;
@@ -259,8 +294,8 @@ export default function App() {
   const handleReset = async () => {
     setLoading("reset");
     try {
-      await client.reset();
-      notify("Reset to seed data");
+      await client.seed();
+      notify("Reset to sample trip");
       setNettingResult(null);
       setRailTypes([]);
       setComplianceRan(false);
@@ -277,7 +312,7 @@ export default function App() {
 
   const entityMap = useMemo(
     () => new Map((scenario?.entities ?? []).map((e) => [e.id, e])),
-    [scenario]
+    [scenario],
   );
 
   const obligations = scenario?.netObligations ?? [];
@@ -285,16 +320,63 @@ export default function App() {
   const allActed =
     obligations.length > 0 &&
     obligations.every(
-      (o) => o.status === "settled" || (o.chosenRail === "claim_link" && !!o.claimToken)
+      (o) =>
+        o.status === "settled" ||
+        (o.chosenRail === "claim_link" && !!o.claimToken),
     );
 
   // Build stepper steps (computed each render so handlers stay fresh).
   const stepDefs = [
-    { id: "net", label: "Net", sub: "Collapse debts", icon: <IconMerge className="h-4 w-4" />, done: !!nettingResult, loadingKey: "netting", enabled: true, onClick: handleNetting },
-    { id: "route", label: "Route", sub: "Pick rails", icon: <IconCompass className="h-4 w-4" />, done: railTypes.length > 0, loadingKey: "routing", enabled: !!nettingResult, onClick: handleRouting },
-    { id: "settle", label: "Settle", sub: "Move money", icon: <IconSend className="h-4 w-4" />, done: allActed, loadingKey: "settle-all", enabled: railTypes.length > 0, onClick: handleSettleAll },
-    { id: "comply", label: "Compliance", sub: "Flag checks", icon: <IconShield className="h-4 w-4" />, done: complianceRan, loadingKey: "compliance", enabled: !!nettingResult, onClick: handleCompliance },
-    { id: "recon", label: "Reconcile", sub: "Match invoices", icon: <IconFileText className="h-4 w-4" />, done: !!reconData, loadingKey: "reconciliation", enabled: !!nettingResult, onClick: handleReconciliation },
+    {
+      id: "net",
+      label: "Net",
+      sub: "Collapse debts",
+      icon: <IconMerge className="h-4 w-4" />,
+      done: !!nettingResult,
+      loadingKey: "netting",
+      enabled: true,
+      onClick: handleNetting,
+    },
+    {
+      id: "route",
+      label: "Route",
+      sub: "Pick rails",
+      icon: <IconCompass className="h-4 w-4" />,
+      done: railTypes.length > 0,
+      loadingKey: "routing",
+      enabled: !!nettingResult,
+      onClick: handleRouting,
+    },
+    {
+      id: "settle",
+      label: "Settle",
+      sub: "Move money",
+      icon: <IconSend className="h-4 w-4" />,
+      done: allActed,
+      loadingKey: "settle-all",
+      enabled: railTypes.length > 0,
+      onClick: handleSettleAll,
+    },
+    {
+      id: "comply",
+      label: "Compliance",
+      sub: "Flag checks",
+      icon: <IconShield className="h-4 w-4" />,
+      done: complianceRan,
+      loadingKey: "compliance",
+      enabled: !!nettingResult,
+      onClick: handleCompliance,
+    },
+    {
+      id: "recon",
+      label: "Reconcile",
+      sub: "Match invoices",
+      icon: <IconFileText className="h-4 w-4" />,
+      done: !!reconData,
+      loadingKey: "reconciliation",
+      enabled: !!nettingResult,
+      onClick: handleReconciliation,
+    },
   ];
 
   const stepStates: Step["state"][] = stepDefs.map((d) => {
@@ -318,9 +400,9 @@ export default function App() {
   // Branded loading state so the app never flashes an empty / broken screen.
   if (!scenario) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
-        <div className="h-10 w-10 rounded-xl brand-gradient animate-pulse-glow" />
-        <p className="text-sm text-slate-500">Loading LiteFX…</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+        <div className="brand-gradient animate-pulse-glow h-10 w-10 rounded-xl" />
+        <p className="text-slate-500 text-sm">Loading LiteFX…</p>
       </div>
     );
   }
@@ -328,79 +410,78 @@ export default function App() {
   return (
     <div className="min-h-screen font-sans">
       {/* Header */}
-      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#070b14]/80 backdrop-blur-xl">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center justify-between">
+      <header className="border-white/[0.06] sticky top-0 z-40 border-b bg-[#070b14]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <LogoMark size={36} />
             <div>
-              <p className="text-[16px] font-bold leading-none tracking-tight font-display">
+              <p className="font-display text-[16px] leading-none font-bold tracking-tight">
                 Lite<span className="brand-text">FX</span>
               </p>
-              <p className="text-[10px] text-slate-500 leading-tight mt-0.5">
+              <p className="text-slate-500 mt-0.5 text-[10px] leading-tight">
                 Cross-border netting & settlement
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="hidden sm:inline-flex chip bg-violet-500/10 border border-violet-500/25 text-violet-300">
+            <span className="chip bg-violet-500/10 border-violet-500/25 text-violet-300 hidden border sm:inline-flex">
               <IconInfo className="h-3.5 w-3.5" /> Sandbox
             </span>
-            <button onClick={handleReset} disabled={loading !== null} className="btn-ghost !px-3 !py-1.5 text-xs">
+            <button
+              onClick={handleReset}
+              disabled={loading !== null}
+              className="btn-ghost !px-3 !py-1.5 text-xs"
+            >
               <ResetIcon className="h-3.5 w-3.5" /> Reset
             </button>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 space-y-6">
-        {/* Hero intro (before any netting) */}
-        {!hasNetted && (
-          <HeroIntro
-                        entityCount={scenario?.entities.length ?? 0}
-                        debtCount={scenario?.debtEdges.length ?? 0}
-                        onStart={() => setTravelerSignal((s) => s + 1)}
-                        onSample={handleLoadSample}
-                      />
-        )}
-
-        {/* Error */}
+      <main className="mx-auto max-w-6xl space-y-5 px-4 py-6 sm:px-6">
         {error && (
-          <div className="rounded-xl bg-red-500/10 border border-red-500/25 p-3.5 animate-fade-in">
-            <p className="text-sm text-red-300">
-              <span className="font-semibold">Something went wrong:</span> {error}
+          <div className="bg-red-500/10 border-red-500/25 animate-fade-in rounded-xl border p-3.5">
+            <p className="text-red-300 text-sm">
+              <span className="font-semibold">Something went wrong:</span>{" "}
+              {error}
             </p>
           </div>
         )}
 
-        {/* Stepper */}
+        {!hasNetted && (
+          <HeroIntro
+            entityCount={scenario?.entities.length ?? 0}
+            debtCount={scenario?.debtEdges.length ?? 0}
+            onStart={() => setTravelerSignal((s) => s + 1)}
+            onSample={handleLoadSample}
+            onEngine={handleEngine}
+            engineBusy={loading === "engine"}
+          />
+        )}
+
         <section className="animate-fade-in-up">
           <Stepper steps={steps} busy={loading !== null} />
         </section>
 
-        {/* Data entry — the tool's input, front and center */}
-        <section className="animate-fade-in-up">
-          <AddDataForms
-            entities={scenario?.entities ?? []}
-            onAdded={handleDataAdded}
-            onClear={handleClear}
-            onLoadSample={handleLoadSample}
-            travelerSignal={travelerSignal}
-          />
-        </section>
+        {nettingResult && (
+          <ReductionStats result={nettingResult} entityMap={entityMap} />
+        )}
 
-        {/* Reduction stats */}
-        {nettingResult && <ReductionStats result={nettingResult} />}
-
-        {/* Balances */}
-        {nettingResult && <Balances result={nettingResult} entityMap={entityMap} />}
-
-        {/* Graph + Scenario */}
-        <div className="grid lg:grid-cols-2 gap-6 items-start">
-          <section className="animate-fade-in-up">
-            <SectionHeader
-              title={hasNetted ? "Netted obligation graph" : "Raw debt graph"}
-              sub={hasNetted ? `${obligations.length} collapsed transfers` : `${scenario?.debtEdges.length ?? 0} pairwise debts`}
-            />
+        <div className="grid items-start gap-5 lg:grid-cols-2">
+          <section className="glass animate-fade-in-up rounded-2xl p-4 sm:p-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-slate-100 text-base font-semibold">
+                  {hasNetted ? "Netted graph" : "Debt graph"}
+                </h2>
+                <p className="text-slate-500 mt-0.5 text-xs">
+                  {hasNetted
+                    ? `${obligations.length} collapsed transfers`
+                    : `${scenario?.debtEdges.length ?? 0} pairwise debts`}
+                </p>
+              </div>
+              {railTypes.length > 0 && <RailLegend types={railTypes} />}
+            </div>
             <DebtGraph
               key={hasNetted ? "netted" : "raw"}
               entities={scenario?.entities ?? []}
@@ -409,13 +490,16 @@ export default function App() {
               mode={hasNetted ? "netted" : "raw"}
               onOpenDetail={setDetailId}
             />
-            {railTypes.length > 0 && <RailLegend types={railTypes} />}
           </section>
 
-          <section className="animate-fade-in-up">
-            <SectionHeader
-              title="Travelers & expenses"
-              sub={`${scenario?.entities.length ?? 0} travelers · ${scenario?.expenses.length ?? 0} expenses`}
+          <section className="glass animate-fade-in-up scroll-mt-24 space-y-4 rounded-2xl p-4 sm:p-5">
+            <AddDataForms
+              entities={scenario?.entities ?? []}
+              expenseCount={scenario?.expenses.length ?? 0}
+              onAdded={handleDataAdded}
+              onClear={handleClear}
+              onLoadSample={handleLoadSample}
+              travelerSignal={travelerSignal}
             />
             <ScenarioOverview
               entities={scenario?.entities ?? []}
@@ -426,27 +510,28 @@ export default function App() {
           </section>
         </div>
 
-        {/* Net obligations */}
         {hasNetted && (
           <section className="animate-fade-in-up">
-            <SectionHeader title="Net obligations" sub={`${obligations.length} transfers to settle`} />
-            <div className="flex flex-wrap justify-center gap-4">
+            <SectionHeader
+              title="Net obligations"
+              sub={`${obligations.length} transfers to settle`}
+            />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {obligations.map((ob) => {
                 const from = entityMap.get(ob.from);
                 const to = entityMap.get(ob.to);
                 if (!from || !to) return null;
                 return (
-                  <div key={ob.id} className="flex w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.75rem)]">
-                    <ObligationCard
-                      className="flex-1"
-                      obligation={ob}
-                      fromEntity={from}
-                      toEntity={to}
-                      onSettle={handleSettle}
-                      onOpenClaim={setClaimModalToken}
-                      onOpenDetail={setDetailId}
-                    />
-                  </div>
+                  <ObligationCard
+                    key={ob.id}
+                    className="h-full"
+                    obligation={ob}
+                    fromEntity={from}
+                    toEntity={to}
+                    onSettle={handleSettle}
+                    onOpenClaim={setClaimModalToken}
+                    onOpenDetail={setDetailId}
+                  />
                 );
               })}
             </div>
@@ -456,25 +541,46 @@ export default function App() {
         {/* Compliance flags */}
         {complianceRan && (
           <section className="animate-fade-in-up">
-            <SectionHeader title="Compliance" sub={complianceFlags.length > 0 ? `${complianceFlags.length} flag(s)` : "All clear"} />
+            <SectionHeader
+              title="Compliance"
+              sub={
+                complianceFlags.length > 0
+                  ? `${complianceFlags.length} flag(s)`
+                  : "All clear"
+              }
+            />
             {complianceFlags.length === 0 ? (
-              <div className="glass rounded-2xl p-5 flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300"><IconCheckCircle className="h-4 w-4" /></span>
-                <p className="text-sm text-slate-300">
-                  No corridor-limit or frequency anomalies detected on the mocked rules.
+              <div className="glass flex items-center gap-3 rounded-2xl p-5">
+                <span className="bg-emerald-500/15 text-emerald-300 flex h-9 w-9 items-center justify-center rounded-full">
+                  <IconCheckCircle className="h-4 w-4" />
+                </span>
+                <p className="text-slate-300 text-sm">
+                  No corridor-limit or frequency anomalies detected on the
+                  mocked rules.
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
                 {complianceFlags.map((f, i) => (
-                  <div key={i} className="glass rounded-xl p-3.5 flex items-start gap-3 border-orange-500/20">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-500/15 text-orange-300 shrink-0"><IconAlertTriangle className="h-3.5 w-3.5" /></span>
+                  <div
+                    key={i}
+                    className="glass border-orange-500/20 flex items-start gap-3 rounded-xl p-3.5"
+                  >
+                    <span className="bg-orange-500/15 text-orange-300 flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
+                      <IconAlertTriangle className="h-3.5 w-3.5" />
+                    </span>
                     <div>
-                      <p className="text-[13px] text-slate-200">
-                        <span className="font-semibold">{f.type === "limit_exceeded" ? "Limit exceeded" : "Frequency anomaly"}</span>
+                      <p className="text-slate-200 text-[13px]">
+                        <span className="font-semibold">
+                          {f.type === "limit_exceeded"
+                            ? "Limit exceeded"
+                            : "Frequency anomaly"}
+                        </span>
                         <span className="text-slate-400"> — {f.message}</span>
                       </p>
-                      <p className="text-[11px] text-slate-600 mt-0.5 font-mono">{f.obligationId}</p>
+                      <p className="text-slate-600 mt-0.5 font-mono text-[11px]">
+                        {f.obligationId}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -486,7 +592,10 @@ export default function App() {
         {/* Reconciliation */}
         {reconData && (
           <section className="animate-fade-in-up">
-            <SectionHeader title="B2B reconciliation" sub="Match settlements against vendor invoices" />
+            <SectionHeader
+              title="B2B reconciliation"
+              sub="Match settlements against vendor invoices"
+            />
             <ReconciliationView
               results={reconData.results}
               vendorSummary={reconData.vendorSummary}
@@ -496,28 +605,28 @@ export default function App() {
           </section>
         )}
 
-        {/* Footer */}
-        <footer className="glass rounded-2xl px-5 py-4">
-          <p className="text-xs text-slate-500 leading-relaxed">
-            <span className="font-semibold text-slate-400">Sandbox:</span> settlement rails are simulated (no real
-            money moves); FX rates are live. Enter your own travelers and expenses above — the engine nets and routes
-            whatever you add.
-          </p>
+        <footer className="text-slate-500 px-1 pt-2 pb-4 text-xs leading-relaxed">
+          <span className="text-slate-400 font-semibold">Sandbox:</span>{" "}
+          settlement rails are simulated (no real money moves); FX rates are
+          live. Add travelers and expenses in the trip panel — the engine nets
+          and routes whatever you add.
         </footer>
       </main>
 
       {/* Toast feedback */}
-      <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 items-end pointer-events-none">
+      <div className="pointer-events-none fixed right-5 bottom-5 z-50 flex flex-col items-end gap-2">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`animate-fade-in-up pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium shadow-glass backdrop-blur-xl ${
+            className={`animate-fade-in-up shadow-glass pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium backdrop-blur-xl ${
               t.kind === "warn"
                 ? "bg-orange-500/15 border-orange-500/30 text-orange-200"
                 : "bg-emerald-500/15 border-emerald-500/30 text-emerald-200"
             }`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${t.kind === "warn" ? "bg-orange-400" : "bg-emerald-400"}`} />
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${t.kind === "warn" ? "bg-orange-400" : "bg-emerald-400"}`}
+            />
             {t.msg}
           </div>
         ))}
@@ -559,7 +668,15 @@ export default function App() {
 
 function ResetIcon({ className = "" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="1 4 1 10 7 10" />
       <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
     </svg>
@@ -568,9 +685,9 @@ function ResetIcon({ className = "" }: { className?: string }) {
 
 function SectionHeader({ title, sub }: { title: string; sub?: string }) {
   return (
-    <div className="mb-3 flex items-baseline justify-between">
-      <h2 className="text-base font-semibold text-slate-100 capitalize">{title}</h2>
-      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+    <div className="mb-3">
+      <h2 className="text-slate-100 text-base font-semibold">{title}</h2>
+      {sub && <p className="text-slate-500 mt-0.5 text-xs">{sub}</p>}
     </div>
   );
 }
@@ -580,37 +697,53 @@ function HeroIntro({
   debtCount,
   onStart,
   onSample,
+  onEngine,
+  engineBusy,
 }: {
   entityCount: number;
   debtCount: number;
   onStart: () => void;
   onSample: () => void;
+  onEngine: () => void;
+  engineBusy: boolean;
 }) {
   return (
-    <section className="relative overflow-hidden glass rounded-3xl p-6 sm:p-8 animate-fade-in-up">
-      <div className="pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full brand-gradient opacity-20 blur-3xl" />
+    <section className="glass animate-fade-in-up relative overflow-hidden rounded-3xl p-6 sm:p-8">
+      <div className="brand-gradient pointer-events-none absolute -top-24 -right-24 h-64 w-64 rounded-full opacity-20 blur-3xl" />
       <div className="relative">
-        <p className="chip bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 mb-3">
+        <p className="chip bg-cyan-500/10 border-cyan-500/25 text-cyan-300 mb-3 border">
           <IconGlobe className="h-3.5 w-3.5" /> Cross-border settlement
         </p>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-50 font-display">
-          Collapse messy group debts into <span className="brand-text">minimal transfers</span>
+        <h1 className="text-slate-50 font-display text-2xl font-bold tracking-tight sm:text-3xl">
+          Collapse messy group debts into{" "}
+          <span className="brand-text">minimal transfers</span>
         </h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-400 leading-relaxed">
+        <p className="text-slate-400 mt-3 max-w-2xl text-sm leading-relaxed">
           {debtCount > 0
-            ? `${entityCount} travelers owe each other across ${debtCount} pairwise debts. Run netting to collapse them into the fewest possible cross-border transfers — each routed through the cheapest rail.`
-            : `Add your travelers and expenses, and LiteFX nets the debts into the fewest cross-border transfers — each routed through the cheapest rail, with a claim link for anyone without an account.`}
+            ? `${entityCount} travelers owe each other across ${debtCount} pairwise debts. Netting matches cheap corridors first (local / linked rails before USDC), then routes each leftover transfer.`
+            : `Add your travelers and expenses, and LiteFX nets the debts into the fewest transfers — matched onto the cheapest rail, with a claim link for anyone without an account.`}
         </p>
-        {entityCount === 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button onClick={onStart} className="btn-primary">
-              Start your trip
+        <div className="mt-5 flex flex-wrap gap-2">
+          {debtCount > 0 && (
+            <button
+              onClick={onEngine}
+              disabled={engineBusy}
+              className="btn-primary"
+            >
+              {engineBusy ? "Running…" : "Net & route debts"}
             </button>
-            <button onClick={onSample} className="btn-ghost">
-              Explore the sample trip
-            </button>
-          </div>
-        )}
+          )}
+          {entityCount === 0 && (
+            <>
+              <button onClick={onStart} className="btn-primary">
+                Start your trip
+              </button>
+              <button onClick={onSample} className="btn-ghost">
+                Explore the sample trip
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </section>
   );
@@ -635,6 +768,7 @@ function useCountUp(target: number, duration = 700): number {
 
 function ReductionStats({
   result,
+  entityMap,
 }: {
   result: {
     rawEdgeCount: number;
@@ -644,95 +778,150 @@ function ReductionStats({
     rawTotalUsd: number;
     netTotalUsd: number;
     feeSavingsUsd: number;
+    greedyFeeUsd?: number;
+    corridorSavingsUsd?: number;
+    balances: { entityId: string; entityName: string; netUsd: number }[];
   };
+  entityMap: Map<string, { id: string; name: string; country: string }>;
 }) {
-  const pct = Math.max(6, Math.round((result.netEdgeCount / Math.max(result.rawEdgeCount, 1)) * 100));
+  const pct = Math.max(
+    6,
+    Math.round((result.netEdgeCount / Math.max(result.rawEdgeCount, 1)) * 100),
+  );
   const saved = useCountUp(result.transfersSaved);
   const fees = useCountUp(result.feeSavingsUsd);
   const moved = useCountUp(result.netTotalUsd);
+  const corridor = useCountUp(result.corridorSavingsUsd ?? 0);
   return (
-    <section className="glass rounded-2xl p-5 animate-fade-in-up">
-      <div className="flex items-center justify-between mb-4">
+    <section className="glass animate-fade-in-up rounded-2xl p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h3 className="section-title">What netting saved you</h3>
-        <span className="chip bg-emerald-500/15 border border-emerald-500/25 text-emerald-300">
+        <span className="chip bg-emerald-500/15 border-emerald-500/25 text-emerald-300 border">
           ↓ {result.reductionRatio}× fewer transfers
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        <div className="rounded-xl bg-black/25 border border-white/[0.05] p-3 text-center">
-          <p className="font-display text-2xl font-bold text-slate-50 tnum">{Math.round(saved)}</p>
-          <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5">transfers saved</p>
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
+          <p className="font-display text-slate-50 tnum text-2xl font-bold">
+            {Math.round(saved)}
+          </p>
+          <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
+            transfers saved
+          </p>
         </div>
-        <div className="rounded-xl bg-black/25 border border-white/[0.05] p-3 text-center">
-          <p className="font-display text-2xl font-bold text-emerald-300 tnum">${fees.toFixed(2)}</p>
-          <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5">est. fees saved</p>
+        <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
+          <p className="font-display text-emerald-300 tnum text-2xl font-bold">
+            ${fees.toFixed(2)}
+          </p>
+          <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
+            est. fees saved
+          </p>
         </div>
-        <div className="rounded-xl bg-black/25 border border-white/[0.05] p-3 text-center">
-          <p className="font-display text-2xl font-bold brand-text tnum">${moved.toFixed(2)}</p>
-          <p className="text-[10px] uppercase tracking-wide text-slate-500 mt-0.5">
-            to move <span className="line-through text-slate-600">${result.rawTotalUsd.toFixed(0)}</span>
+        <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
+          <p className="font-display text-cyan-300 tnum text-2xl font-bold">
+            ${corridor.toFixed(2)}
+          </p>
+          <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
+            vs Splitwise match
+          </p>
+        </div>
+        <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
+          <p className="font-display brand-text tnum text-2xl font-bold">
+            ${moved.toFixed(2)}
+          </p>
+          <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
+            to move{" "}
+            <span className="text-slate-600 whitespace-nowrap line-through">
+              ${result.rawTotalUsd.toFixed(0)}
+            </span>
           </p>
         </div>
       </div>
 
+      <p className="text-slate-500 mb-4 text-[11px]">
+        Matched cheapest corridors first (local / SEPA / linked) instead of
+        largest-debtor → largest-creditor.
+        {result.greedyFeeUsd != null && result.greedyFeeUsd > 0
+          ? ` Splitwise-style matching would have cost ~$${result.greedyFeeUsd.toFixed(2)} in rail fees.`
+          : ""}
+      </p>
+
       <div className="space-y-3">
         <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-slate-500">Without netting · {result.rawEdgeCount} payments</span>
-            <span className="font-mono text-sm text-slate-300">{result.rawEdgeCount}</span>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-slate-500 text-xs">
+              Without netting · {result.rawEdgeCount} payments
+            </span>
+            <span className="text-slate-300 font-mono text-sm">
+              {result.rawEdgeCount}
+            </span>
           </div>
-          <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
-            <div className="h-full w-full rounded-full bg-gradient-to-r from-slate-500 to-slate-400" />
+          <div className="bg-white/[0.06] h-2 overflow-hidden rounded-full">
+            <div className="from-slate-500 to-slate-400 h-full w-full rounded-full bg-gradient-to-r" />
           </div>
         </div>
         <div>
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-slate-500">With LiteFX · {result.netEdgeCount} payments</span>
-            <span className="font-mono text-sm brand-text font-semibold">{result.netEdgeCount}</span>
+          <div className="mb-1 flex items-center justify-between">
+            <span className="text-slate-500 text-xs">
+              With LiteFX · {result.netEdgeCount} payments
+            </span>
+            <span className="brand-text font-mono text-sm font-semibold">
+              {result.netEdgeCount}
+            </span>
           </div>
-          <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
-            <div className="h-full rounded-full brand-gradient transition-all duration-700" style={{ width: `${pct}%` }} />
+          <div className="bg-white/[0.06] h-2 overflow-hidden rounded-full">
+            <div
+              className="brand-gradient h-full rounded-full transition-all duration-700"
+              style={{ width: `${pct}%` }}
+            />
           </div>
         </div>
       </div>
-    </section>
-  );
-}
 
-function Balances({
-  result,
-  entityMap,
-}: {
-  result: { balances: { entityId: string; entityName: string; netUsd: number }[] };
-  entityMap: Map<string, { id: string; name: string; country: string }>;
-}) {
-  return (
-    <section className="animate-fade-in-up">
-      <SectionHeader title="Net balances" sub="in USD reference currency" />
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-        {result.balances.map((b) => {
-          const ent = entityMap.get(b.entityId);
-          const isCreditor = b.netUsd > 0;
-          return (
-            <div key={b.entityId} className="glass rounded-xl p-3 flex flex-col items-center text-center animate-fade-in-up">
-              <Avatar id={b.entityId} name={b.entityName} size={40} />
-              <p className="mt-2 text-[13px] font-semibold text-slate-200 leading-tight">
-                {b.entityName.split(" ")[0]}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                {ent ? `${COUNTRY_FLAGS[ent.country]} ${ent.country}` : ""}
-              </p>
-              <p className={`mt-1.5 font-mono text-[13px] font-semibold ${isCreditor ? "text-emerald-400" : "text-red-400"}`}>
-                {isCreditor ? "+" : ""}${Math.abs(b.netUsd).toFixed(2)}
-              </p>
-              <p className="text-[9px] uppercase tracking-wide text-slate-600">
-                {isCreditor ? "receives" : "owes"}
-              </p>
-            </div>
-          );
-        })}
-      </div>
+      {result.balances.length > 0 && (
+        <div className="border-white/[0.06] mt-5 border-t pt-4">
+          <p className="section-title mb-3">Net balances</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+            {result.balances.map((b) => {
+              const ent = entityMap.get(b.entityId);
+              const settled = Math.abs(b.netUsd) < 0.005;
+              const isCreditor = b.netUsd > 0.005;
+              return (
+                <div
+                  key={b.entityId}
+                  className="bg-black/25 border-white/[0.05] flex flex-col items-center rounded-xl border p-3 text-center"
+                >
+                  <Avatar id={b.entityId} name={b.entityName} size={36} />
+                  <p className="text-slate-200 mt-2 text-[13px] leading-tight font-semibold">
+                    {b.entityName.split(" ")[0]}
+                  </p>
+                  <p className="text-slate-500 text-[10px]">
+                    {ent
+                      ? `${COUNTRY_FLAGS[ent.country] ?? ""} ${ent.country}`
+                      : ""}
+                  </p>
+                  <p
+                    className={`mt-1.5 font-mono text-[13px] font-semibold ${
+                      settled
+                        ? "text-slate-400"
+                        : isCreditor
+                          ? "text-emerald-400"
+                          : "text-red-400"
+                    }`}
+                  >
+                    {isCreditor ? "+" : settled ? "" : "−"}$
+                    {Math.abs(b.netUsd).toFixed(2)}
+                  </p>
+                  <p className="text-slate-600 text-[9px] tracking-wide uppercase">
+                    {settled ? "settled" : isCreditor ? "receives" : "owes"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -745,13 +934,23 @@ function RailLegend({ types }: { types: RailType[] }) {
     stable_bridge: { label: "Stable bridge", color: "#a78bfa" },
   };
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      {types.map((t) => (
-        <span key={t} className="chip bg-white/[0.04] border border-white/[0.08] text-slate-300">
-          <span className="h-2 w-2 rounded-full" style={{ background: META[t].color }} />
-          {META[t].label}
-        </span>
-      ))}
+    <div className="flex flex-wrap justify-end gap-2">
+      {types.map((t) => {
+        const meta = META[t];
+        if (!meta) return null;
+        return (
+          <span
+            key={t}
+            className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 border"
+          >
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ background: meta.color }}
+            />
+            {meta.label}
+          </span>
+        );
+      })}
     </div>
   );
 }

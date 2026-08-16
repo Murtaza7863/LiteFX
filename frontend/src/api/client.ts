@@ -20,7 +20,10 @@ export interface Expense {
   tripId: string;
   category: string;
   description: string;
-  split?: { mode: "equal" | "percent" | "amount"; parts?: Record<string, number> };
+  split?: {
+    mode: "equal" | "percent" | "amount";
+    parts?: Record<string, number>;
+  };
 }
 
 export interface DebtEdge {
@@ -59,6 +62,7 @@ export interface NetObligation {
   considered?: RailConsideration[];
   feeUsd?: number;
   timeHours?: number;
+  matchReason?: string;
 }
 
 export interface ComplianceFlag {
@@ -128,7 +132,7 @@ export interface ScenarioResponse {
 }
 
 export interface NettingResult {
-  obligations: NetObligation[];
+  obligations?: NetObligation[];
   rawEdgeCount: number;
   netEdgeCount: number;
   reductionRatio: number;
@@ -136,6 +140,8 @@ export interface NettingResult {
   rawTotalUsd: number;
   netTotalUsd: number;
   feeSavingsUsd: number;
+  greedyFeeUsd?: number;
+  corridorSavingsUsd?: number;
   balances: { entityId: string; entityName: string; netUsd: number }[];
 }
 export interface RoutingResult {
@@ -150,7 +156,11 @@ export interface ClaimDetails {
   payoutOptions: string[];
 }
 
-async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+async function api<T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
@@ -166,31 +176,27 @@ async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> 
 export const client = {
   getScenario: () => api<ScenarioResponse>("/scenario"),
   runNetting: () => api<NettingResult>("/netting/run", "POST"),
+  runEngine: () => api<NettingResult & RoutingResult>("/engine/run", "POST"),
   runRouting: () => api<RoutingResult>("/routing/run", "POST"),
-  runCompliance: () => api<{ flags: ComplianceFlag[] }>("/compliance/run", "POST"),
+  runCompliance: () =>
+    api<{ flags: ComplianceFlag[] }>("/compliance/run", "POST"),
   runReconciliation: () =>
     api<{ results: ReconciliationResult[]; vendorSummary: any[] }>(
       "/reconciliation/run",
-      "POST"
+      "POST",
     ),
   settle: (id: string) =>
     api<{ success: boolean; message: string; link?: ClaimLink }>(
       `/settlement/${id}/settle`,
-      "POST"
-    ),
-  createClaim: (obligationId: string) =>
-    api<{ success: boolean; link?: ClaimLink }>(
-      `/claim/${obligationId}/create`,
-      "POST"
+      "POST",
     ),
   getClaim: (token: string) => api<ClaimDetails>(`/claim/${token}`),
   claimWithPayout: (token: string, payoutMethod: string) =>
     api<{ success: boolean; link?: ClaimLink; message: string }>(
       `/claim/${token}/claim`,
       "POST",
-      { payoutMethod }
+      { payoutMethod },
     ),
-  reset: () => api<{ success: boolean; message: string }>("/reset", "POST"),
   clear: () => api<{ success: boolean; message: string }>("/clear", "POST"),
   seed: () => api<{ success: boolean; message: string }>("/seed", "POST"),
   addEntity: (body: {
@@ -198,6 +204,7 @@ export const client = {
     country: string;
     railType?: string;
     alias?: string;
+    contact?: { type: "email" | "phone"; value: string };
   }) => api<{ success: boolean; entity: Entity }>("/entities", "POST", body),
   addExpense: (body: {
     payerId: string;
@@ -205,8 +212,13 @@ export const client = {
     amount: number;
     currency: string;
     description: string;
-    split?: { mode: "equal" | "percent" | "amount"; parts?: Record<string, number> };
+    split?: {
+      mode: "equal" | "percent" | "amount";
+      parts?: Record<string, number>;
+    };
   }) => api<{ success: boolean; expense: Expense }>("/expenses", "POST", body),
-  deleteExpense: (id: string) => api<{ success: boolean }>(`/expenses/${id}`, "DELETE"),
-  deleteEntity: (id: string) => api<{ success: boolean }>(`/entities/${id}`, "DELETE"),
+  deleteExpense: (id: string) =>
+    api<{ success: boolean }>(`/expenses/${id}`, "DELETE"),
+  deleteEntity: (id: string) =>
+    api<{ success: boolean }>(`/entities/${id}`, "DELETE"),
 };

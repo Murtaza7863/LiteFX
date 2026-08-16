@@ -1,9 +1,3 @@
-// ──────────────────────────────────────────────
-// Stepper — a guided flow indicator for the five
-// agent stages. Each node shows locked / available /
-// active / loading / complete state, connected by a
-// progress line.
-// ──────────────────────────────────────────────
 import type { ReactNode } from "react";
 
 export interface Step {
@@ -22,10 +16,9 @@ interface Props {
 
 export function Stepper({ steps, busy = false }: Props) {
   return (
-    <div className="glass rounded-2xl p-2">
-      <div className="flex items-stretch gap-0 overflow-x-auto">
-        {steps.map((step, i) => {
-          const isLast = i === steps.length - 1;
+    <nav className="glass rounded-2xl p-1.5 sm:p-2">
+      <ol className="grid grid-cols-5 gap-1">
+        {steps.map((step) => {
           const done = step.state === "complete";
           const active = step.state === "active";
           const available = step.state === "available";
@@ -35,77 +28,70 @@ export function Stepper({ steps, busy = false }: Props) {
           const enabled = active || available;
 
           return (
-            <div key={step.id} className="flex items-center flex-1 min-w-0">
-              {/* Node */}
+            <li key={step.id} className="min-w-0">
               <button
+                type="button"
                 onClick={step.onClick}
                 disabled={!clickable}
-                className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 w-full text-left justify-center md:justify-start transition-all duration-200 ${
-                  clickable ? "hover:bg-white/[0.05] cursor-pointer" : "cursor-default"
+                className={`flex w-full min-w-0 flex-col items-center gap-1.5 rounded-xl px-1 py-2 sm:flex-row sm:items-center sm:gap-2.5 sm:px-2.5 sm:py-2.5 ${
+                  clickable
+                    ? "hover:bg-white/[0.05] cursor-pointer"
+                    : "cursor-default"
                 } ${active ? "bg-white/[0.06]" : ""}`}
               >
-                {/* Circle */}
                 <span
-                  className={`relative flex h-9 w-9 items-center justify-center rounded-full text-base shrink-0 transition-all duration-300 ${
+                  className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-base transition-all duration-300 sm:h-9 sm:w-9 ${
                     done
-                      ? "bg-gradient-to-br from-cyan-400 to-violet-500 text-white shadow-glow-cyan"
+                      ? "from-cyan-400 to-violet-500 text-white shadow-glow-cyan bg-gradient-to-br"
                       : isLoading
-                      ? "bg-white/[0.08] border border-cyan-400/50 text-cyan-300 ring-4 ring-cyan-400/10"
-                      : enabled
-                      ? "bg-white/[0.07] border border-cyan-400/40 text-cyan-200"
-                      : "bg-white/[0.04] border border-white/[0.08] text-slate-600"
+                        ? "bg-white/[0.08] border-cyan-400/50 text-cyan-300 ring-cyan-400/10 border ring-4"
+                        : enabled
+                          ? "bg-white/[0.07] border-cyan-400/40 text-cyan-200 border"
+                          : "bg-white/[0.04] border-white/[0.08] text-slate-600 border"
                   }`}
                 >
                   {done ? (
                     <CheckIcon className="h-4 w-4" />
                   ) : isLoading ? (
-                    <span className="h-4 w-4 rounded-full border-2 border-cyan-300 border-t-transparent animate-spin" />
+                    <span className="border-cyan-300 h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
                   ) : (
                     <span>{step.icon}</span>
                   )}
                   {active && !isLoading && (
-                    <span className="absolute inset-0 rounded-full border-2 border-cyan-400/50 animate-pulse" />
+                    <span className="border-cyan-400/50 absolute inset-0 animate-pulse rounded-full border-2" />
                   )}
                 </span>
 
-                {/* Label (hidden on small screens; icon-only keeps it compact) */}
-                <span className="min-w-0 hidden md:block">
+                <span className="hidden min-w-0 sm:block">
                   <span
-                    className={`block text-[13px] font-semibold leading-tight truncate ${
+                    className={`block truncate text-[11px] leading-tight font-semibold md:text-[13px] ${
                       done
                         ? "text-slate-100"
                         : enabled || isLoading
-                        ? "text-cyan-100"
-                        : "text-slate-600"
+                          ? "text-cyan-100"
+                          : "text-slate-600"
                     }`}
                   >
                     {step.label}
                   </span>
                   <span
-                    className={`hidden lg:block text-[11px] leading-tight truncate ${
-                      done ? "text-slate-400" : enabled || isLoading ? "text-slate-400" : "text-slate-700"
+                    className={`hidden truncate text-[11px] leading-tight lg:block ${
+                      done
+                        ? "text-slate-400"
+                        : enabled || isLoading
+                          ? "text-slate-400"
+                          : "text-slate-700"
                     }`}
                   >
                     {isLoading ? "Working…" : step.sub}
                   </span>
                 </span>
               </button>
-
-              {/* Connector */}
-              {!isLast && (
-                <div className="flex-shrink-0 w-4 sm:w-8 flex items-center justify-center">
-                  <div
-                    className={`h-px w-full transition-colors duration-500 ${
-                      done ? "bg-gradient-to-r from-cyan-400/70 to-violet-400/70" : "bg-white/[0.08]"
-                    }`}
-                  />
-                </div>
-              )}
-            </div>
+            </li>
           );
         })}
-      </div>
-    </div>
+      </ol>
+    </nav>
   );
 }
 

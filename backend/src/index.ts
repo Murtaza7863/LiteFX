@@ -23,7 +23,8 @@ const dist = path.join(__dirname, "..", "..", "frontend", "dist");
 if (existsSync(dist)) {
   app.use(express.static(dist));
   app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api")) return next();
+    if (req.path.startsWith("/api") || req.path.startsWith("/claim"))
+      return next();
     res.sendFile(path.join(dist, "index.html"));
   });
 }
@@ -35,8 +36,12 @@ async function main() {
 
   app.listen(PORT, () => {
     console.log(`✅ LiteFX backend running at http://localhost:${PORT}`);
-    console.log(`   API endpoints under /api/*  ·  claim pages at /claim/:token`);
-    console.log(`   FX rates: ${live ? "live (frankfurter.app)" : "static fallback"}`);
+    console.log(
+      `   API endpoints under /api/*  ·  claim pages at /claim/:token`,
+    );
+    console.log(
+      `   FX rates: ${live ? "live (frankfurter.app)" : "static fallback"}`,
+    );
   });
 }
 

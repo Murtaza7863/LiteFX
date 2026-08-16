@@ -1,11 +1,8 @@
 import type { Entity, Expense } from "../api/client";
+
+import { COUNTRY_FLAGS, COUNTRY_NAMES } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { IconX } from "./icons";
-import { COUNTRY_FLAGS, COUNTRY_NAMES } from "../lib/theme";
-
-// ──────────────────────────────────────────────
-// Scenario overview: traveler cards + expense ledger.
-// ──────────────────────────────────────────────
 
 interface Props {
   entities: Entity[];
@@ -14,46 +11,61 @@ interface Props {
   onDeleteExpense?: (id: string) => void;
 }
 
-export function ScenarioOverview({ entities, expenses, onDeleteTraveler, onDeleteExpense }: Props) {
+export function ScenarioOverview({
+  entities,
+  expenses,
+  onDeleteTraveler,
+  onDeleteExpense,
+}: Props) {
   return (
-    <div className="space-y-5">
-      {/* Travelers */}
-      <div>
-        <h3 className="section-title mb-3">
-          Travelers <span className="text-slate-600 normal-case font-normal">· {entities.length}</span>
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+    <div className="space-y-4">
+      {entities.length === 0 ? (
+        <p className="text-slate-500 py-8 text-center text-sm">
+          Add a traveler to start the trip.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {entities.map((e) => {
             const hasAccount = e.linkedRailAliases.length > 0;
             return (
-              <div key={e.id} className="glass rounded-xl p-3 flex items-center gap-3 animate-fade-in-up">
-                <Avatar id={e.id} name={e.name} size={38} />
+              <div
+                key={e.id}
+                className="bg-white/[0.03] border-white/[0.06] animate-fade-in-up flex items-center gap-3 rounded-xl border p-2.5"
+              >
+                <Avatar id={e.id} name={e.name} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-semibold text-slate-200 truncate">{e.name.trim()}</p>
+                    <p className="text-slate-200 truncate text-sm font-semibold">
+                      {e.name.trim()}
+                    </p>
                     {!hasAccount && (
                       <span
-                        className="chip bg-amber-500/15 border border-amber-500/30 text-amber-300 !px-1.5 !py-0 !text-[9px]"
+                        className="chip bg-amber-500/15 border-amber-500/30 text-amber-300 shrink-0 border !px-1.5 !py-0 !text-[9px]"
                         title="No linked account — will receive via claim link"
                       >
                         no account
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-500">
-                    {COUNTRY_FLAGS[e.country]} {COUNTRY_NAMES[e.country] ?? e.country}
+                  <p className="text-slate-500 truncate text-[11px]">
+                    {COUNTRY_FLAGS[e.country]}{" "}
+                    {COUNTRY_NAMES[e.country] ?? e.country}
                     {hasAccount && (
                       <span className="text-slate-600">
                         {" · "}
-                        {e.linkedRailAliases.map((a) => a.railType).join(", ")} ({e.country})
+                        {e.linkedRailAliases
+                          .map((a) => a.railType)
+                          .join(", ")}{" "}
+                        ({e.country})
                       </span>
                     )}
                   </p>
                 </div>
                 {onDeleteTraveler && (
                   <button
+                    type="button"
                     onClick={() => onDeleteTraveler(e.id)}
-                    className="shrink-0 h-7 w-7 flex items-center justify-center rounded-full text-slate-600 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                    className="text-slate-600 hover:text-red-300 hover:bg-red-500/10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors"
                     title="Remove traveler"
                   >
                     <IconX className="h-3.5 w-3.5" />
@@ -63,31 +75,35 @@ export function ScenarioOverview({ entities, expenses, onDeleteTraveler, onDelet
             );
           })}
         </div>
-      </div>
+      )}
 
-      {/* Expenses */}
-      <div>
-        <h3 className="section-title mb-3">
-          Shared Expenses <span className="text-slate-600 normal-case font-normal">· {expenses.length}</span>
-        </h3>
-        <div className="glass rounded-xl overflow-hidden">
+      {expenses.length > 0 && (
+        <div className="bg-white/[0.03] border-white/[0.06] overflow-hidden rounded-xl border">
           <div className="max-h-72 overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-[#0b1120]/90 backdrop-blur">
-                <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500">
+                <tr className="text-slate-500 text-left text-[11px] tracking-wider uppercase">
                   <th className="px-3.5 py-2.5 font-medium">Expense</th>
                   <th className="px-3.5 py-2.5 font-medium">Paid by</th>
-                  <th className="px-3.5 py-2.5 font-medium text-right">Amount</th>
+                  <th className="px-3.5 py-2.5 text-right font-medium">
+                    Amount
+                  </th>
+                  {onDeleteExpense && <th className="w-10" />}
                 </tr>
               </thead>
               <tbody>
                 {expenses.map((exp) => {
                   const payer = entities.find((e) => e.id === exp.payerId);
                   return (
-                    <tr key={exp.id} className="border-t border-white/[0.04] hover:bg-white/[0.03] transition-colors">
+                    <tr
+                      key={exp.id}
+                      className="border-white/[0.04] hover:bg-white/[0.03] border-t transition-colors"
+                    >
                       <td className="px-3.5 py-2.5">
-                        <p className="text-[13px] text-slate-300 leading-tight">{exp.description}</p>
-                        <p className="text-[11px] text-slate-600">
+                        <p className="text-slate-300 text-[13px] leading-tight">
+                          {exp.description}
+                        </p>
+                        <p className="text-slate-600 text-[11px]">
                           {exp.split && exp.split.mode !== "equal"
                             ? exp.split.mode === "percent"
                               ? `custom % split · ${exp.participantIds.length} people`
@@ -99,18 +115,22 @@ export function ScenarioOverview({ entities, expenses, onDeleteTraveler, onDelet
                         {payer && (
                           <div className="flex items-center gap-2">
                             <Avatar id={payer.id} name={payer.name} size={22} />
-                            <span className="text-xs text-slate-400">{payer.name.trim().split(" ")[0]}</span>
+                            <span className="text-slate-400 text-xs">
+                              {payer.name.trim().split(" ")[0]}
+                            </span>
                           </div>
                         )}
                       </td>
-                      <td className="px-3.5 py-2.5 text-right font-mono text-[13px] text-slate-200 whitespace-nowrap">
-                        {exp.amount.toLocaleString()} <span className="text-slate-500">{exp.currency}</span>
+                      <td className="text-slate-200 px-3.5 py-2.5 text-right font-mono text-[13px] whitespace-nowrap">
+                        {exp.amount.toLocaleString()}{" "}
+                        <span className="text-slate-500">{exp.currency}</span>
                       </td>
                       {onDeleteExpense && (
-                        <td className="pr-3 py-2.5 text-right">
+                        <td className="py-2.5 pr-3 text-right">
                           <button
+                            type="button"
                             onClick={() => onDeleteExpense(exp.id)}
-                            className="h-6 w-6 inline-flex items-center justify-center rounded-full text-slate-600 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                            className="text-slate-600 hover:text-red-300 hover:bg-red-500/10 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors"
                             title="Remove expense"
                           >
                             <IconX className="h-3 w-3" />
@@ -124,7 +144,7 @@ export function ScenarioOverview({ entities, expenses, onDeleteTraveler, onDelet
             </table>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

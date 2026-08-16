@@ -1,36 +1,22 @@
 import type { ClaimLink, NetObligation } from "../types";
-import { addClaimLink, addLedgerEntry, getClaimLink, getEntity, getNetObligation, updateClaimLink, updateNetObligation } from "../store";
-
-// ──────────────────────────────────────────────
-// Agent 3 — Claim-link agent
-//
-// When routing outputs `claim_link`:
-//   1. Generate a unique token bound to the obligation id
-//      and the recipient's contact.
-//   2. Status: pending → claimed → expired (mock 7-day expiry).
-//   3. Recipient opens the link, picks a payout method from
-//      a mocked list, status flips to "claimed".
-//      No account creation step.
-//
-// MOCKED — in production this would:
-//   - Send an SMS/email with the claim link (e.g. via Twilio/SendGrid)
-//   - Store the claim in a database with signed tokens
-//   - Integrate with a payout provider (Wise, Stripe, or local rails)
-//   - Enforce real KYC before payout
-// ──────────────────────────────────────────────
+import { payoutOptionsFor } from "../data/countries";
+import {
+  addClaimLink,
+  addLedgerEntry,
+  getClaimLink,
+  getEntity,
+  getNetObligation,
+  getStore,
+  updateClaimLink,
+  updateNetObligation,
+} from "../store";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Mocked payout options the recipient can choose.
-export const PAYOUT_OPTIONS = [
-  "Local bank transfer (provide IBAN / account no.)",
-  "E-wallet (GrabPay, TrueMoney, Alipay, etc.)",
-  "Cash pickup at Western Union / MoneyGram agent",
-  "Donate to charity",
-];
+export { payoutOptionsFor };
+export const PAYOUT_OPTIONS = payoutOptionsFor("");
 
-export function generateClaimToken(): string {
-  // Simple unique token — in production use a signed JWT or UUIDv4.
+function generateClaimToken(): string {
   return `cl_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 }
 
@@ -42,6 +28,19 @@ export function createClaimLink(obligationId: string): ClaimLink | null {
   if (!recipient) return null;
 
   const now = new Date();
+  const existing = getStore().claimLinks.find(
+    (c) =>
+      c.obligationId === obligationId &&
+      c.status === "pending" &&
+      new Date(c.expiresAt) >= now,
+  );
+  if (existing) {
+    if (ob.claimToken !== existing.token) {
+      updateNetObligation(obligationId, { claimToken: existing.token });
+    }
+    return existing;
+  }
+
   const token = generateClaimToken();
 
   const link: ClaimLink = {
@@ -59,18 +58,17 @@ export function createClaimLink(obligationId: string): ClaimLink | null {
   return link;
 }
 
-export function claimLinkByToken(token: string): ClaimLink | undefined {
-  return getClaimLink(token);
-}
-
 export function claimWithPayoutMethod(
   token: string,
-  payoutMethod: string
+  payoutMethod: string,
 ): { success: boolean; link?: ClaimLink; message: string } {
   const link = getClaimLink(token);
   if (!link) return { success: false, message: "Claim link not found." };
   if (link.status === "claimed")
-    return { success: false, message: "This claim link has already been used." };
+    return {
+      success: false,
+      message: "This claim link has already been used.",
+    };
   if (link.status === "expired")
     return { success: false, message: "This claim link has expired." };
 
@@ -82,11 +80,11 @@ export function claimWithPayoutMethod(
 
   updateClaimLink(token, { status: "claimed", payoutMethod });
 
-  // Mark the underlying obligation as settled (MOCKED — in production
-  // the payout would only be marked settled after the rail confirms).
-  updateNetObligation(link.obligationId, { status: "settled" });
   const claimedOb = getNetObligation(link.obligationId);
-  if (claimedOb) recordLedger(claimedOb, "claimed");
+  if (claimedOb && claimedOb.status !== "settled") {
+    updateNetObligation(link.obligationId, { status: "settled" });
+    recordLedger(claimedOb, "claimed");
+  }
 
   return {
     success: true,
@@ -96,9 +94,11 @@ export function claimWithPayoutMethod(
 }
 
 /** Simulate settling a non-claim-link obligation. */
-export function settleObligation(
-  obligationId: string
-): { success: boolean; message: string } {
+export function settleObligation(obligationId: string): {
+  success: boolean;
+  message: string;
+  link?: ClaimLink;
+} {
   const ob = getNetObligation(obligationId);
   if (!ob) return { success: false, message: "Obligation not found." };
   if (ob.status === "settled")
@@ -113,6 +113,7 @@ export function settleObligation(
     return {
       success: true,
       message: `Claim link generated. Recipient will receive a link to choose a payout method.`,
+      link,
     };
   }
 

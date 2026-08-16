@@ -26,7 +26,12 @@ import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
-const DB_PATH = path.join(DATA_DIR, "db.json");
+
+function dbFile(): string {
+  return process.env.LITEFX_DB_PATH
+    ? path.resolve(process.env.LITEFX_DB_PATH)
+    : path.join(DATA_DIR, "db.json");
+}
 
 export interface StoreState {
   entities: Entity[];
@@ -85,7 +90,9 @@ function computeShares(exp: Expense): Record<string, number> {
     }
     // Give the payer any unassigned remainder so shares sum to the total.
     const remainderPct = 100 - assigned;
-    if (remainderPct > 0) shares[exp.payerId] = (shares[exp.payerId] ?? 0) + (exp.amount * remainderPct) / 100;
+    if (remainderPct > 0)
+      shares[exp.payerId] =
+        (shares[exp.payerId] ?? 0) + (exp.amount * remainderPct) / 100;
   } else if (mode === "amount") {
     let assigned = 0;
     for (const pid of exp.participantIds) {
@@ -94,7 +101,8 @@ function computeShares(exp: Expense): Record<string, number> {
       assigned += amt;
     }
     const remainder = exp.amount - assigned;
-    if (remainder > 0) shares[exp.payerId] = (shares[exp.payerId] ?? 0) + remainder;
+    if (remainder > 0)
+      shares[exp.payerId] = (shares[exp.payerId] ?? 0) + remainder;
   } else {
     for (const pid of exp.participantIds) shares[pid] = exp.amount / n;
   }
@@ -135,8 +143,10 @@ let state: StoreState | null = null;
 function save(): void {
   if (!state) return;
   try {
-    if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-    writeFileSync(DB_PATH, JSON.stringify(state, null, 2));
+    const file = dbFile();
+    const dir = path.dirname(file);
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(file, JSON.stringify(state, null, 2));
   } catch (e) {
     console.warn("[store] failed to persist:", (e as Error).message);
   }
@@ -144,11 +154,32 @@ function save(): void {
 
 function load(): StoreState | null {
   try {
-    if (!existsSync(DB_PATH)) return null;
-    const raw = readFileSync(DB_PATH, "utf8");
-    const parsed = JSON.parse(raw) as StoreState;
+    const file = dbFile();
+    if (!existsSync(file)) return null;
+    const raw = readFileSync(file, "utf8");
+    const parsed = JSON.parse(raw) as Partial<StoreState>;
     if (!parsed.entities || !parsed.expenses) return null;
-    return parsed;
+    const base = freshState();
+    const merged: StoreState = {
+      ...base,
+      ...parsed,
+      entities: parsed.entities ?? [],
+      expenses: parsed.expenses ?? [],
+      debtEdges: parsed.debtEdges ?? [],
+      netObligations: parsed.netObligations ?? [],
+      claimLinks: parsed.claimLinks ?? [],
+      complianceFlags: parsed.complianceFlags ?? [],
+      invoices: parsed.invoices ?? [],
+      reconciliationResults: parsed.reconciliationResults ?? [],
+      ledger: parsed.ledger ?? [],
+      nettingSummary: parsed.nettingSummary ?? null,
+      complianceRan: !!parsed.complianceRan,
+      reconciliationRan: !!parsed.reconciliationRan,
+      vendorSummary: parsed.vendorSummary ?? [],
+    };
+    // Reprice IOUs with the current FX table (live rates may have changed).
+    merged.debtEdges = deriveDebtEdges(merged.expenses);
+    return merged;
   } catch {
     return null;
   }
@@ -165,11 +196,6 @@ export function getStore(): StoreState {
   return state!;
 }
 
-export function resetStore(): void {
-  state = freshState();
-  save();
-}
-
 export function seedStore(): void {
   state = sampleState();
   save();
@@ -184,7 +210,10 @@ export function getNetObligation(id: string): NetObligation | undefined {
   return getStore().netObligations.find((o) => o.id === id);
 }
 
-export function updateNetObligation(id: string, patch: Partial<NetObligation>): void {
+export function updateNetObligation(
+  id: string,
+  patch: Partial<NetObligation>,
+): void {
   const ob = getStore().netObligations.find((o) => o.id === id);
   if (ob) Object.assign(ob, patch);
   save();
@@ -194,7 +223,10 @@ export function getClaimLink(token: string): ClaimLink | undefined {
   return getStore().claimLinks.find((c) => c.token === token);
 }
 
-export function updateClaimLink(token: string, patch: Partial<ClaimLink>): void {
+export function updateClaimLink(
+  token: string,
+  patch: Partial<ClaimLink>,
+): void {
   const cl = getStore().claimLinks.find((c) => c.token === token);
   if (cl) Object.assign(cl, patch);
   save();
@@ -210,7 +242,9 @@ export function setComplianceFlags(flags: ComplianceFlag[]): void {
   save();
 }
 
-export function setReconciliationResults(results: ReconciliationResult[]): void {
+export function setReconciliationResults(
+  results: ReconciliationResult[],
+): void {
   getStore().reconciliationResults = results;
   save();
 }
@@ -237,7 +271,10 @@ export function setComplianceRan(v: boolean): void {
   save();
 }
 
-export function setReconciliation(ran: boolean, vendorSummary: VendorSummaryRow[]): void {
+export function setReconciliation(
+  ran: boolean,
+  vendorSummary: VendorSummaryRow[],
+): void {
   const st = getStore();
   st.reconciliationRan = ran;
   st.vendorSummary = vendorSummary;
@@ -258,6 +295,8 @@ function invalidateDerived(): void {
   st.reconciliationRan = false;
   st.vendorSummary = [];
   st.claimLinks = [];
+  st.invoices = [];
+  st.ledger = [];
 }
 
 export function addEntity(e: Entity): void {
@@ -289,7 +328,9 @@ export function deleteEntity(id: string): boolean {
   const before = st.entities.length;
   st.entities = st.entities.filter((e) => e.id !== id);
   if (st.entities.length === before) return false;
-  st.expenses = st.expenses.filter((e) => e.payerId !== id && !e.participantIds.includes(id));
+  st.expenses = st.expenses.filter(
+    (e) => e.payerId !== id && !e.participantIds.includes(id),
+  );
   st.debtEdges = deriveDebtEdges(st.expenses);
   invalidateDerived();
   save();
@@ -298,11 +339,6 @@ export function deleteEntity(id: string): boolean {
 
 // Start from a blank slate (a real tool, not a fixed demo).
 export function clearStore(): void {
-  const st = getStore();
-  st.entities = [];
-  st.expenses = [];
-  st.debtEdges = [];
-  st.ledger = [];
-  invalidateDerived();
+  state = freshState();
   save();
 }

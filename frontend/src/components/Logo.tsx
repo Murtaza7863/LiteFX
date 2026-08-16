@@ -4,7 +4,7 @@
 // the right — "many debts, one settlement".
 // ──────────────────────────────────────────────
 
-export function LogoGlyph({ className = "h-5 w-5" }: { className?: string }) {
+function LogoGlyph({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg
       className={className}
@@ -29,12 +29,12 @@ export function LogoGlyph({ className = "h-5 w-5" }: { className?: string }) {
 export function LogoMark({ size = 36 }: { size?: number }) {
   return (
     <div
-      className="relative flex items-center justify-center rounded-xl brand-gradient text-white shadow-glow-cyan shrink-0"
+      className="brand-gradient text-white shadow-glow-cyan relative flex shrink-0 items-center justify-center rounded-xl"
       style={{ width: size, height: size }}
     >
       <LogoGlyph className="h-[58%] w-[58%]" />
       {/* subtle top sheen */}
-      <div className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-b from-white/25 to-transparent" />
+      <div className="from-white/25 pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-b to-transparent" />
     </div>
   );
 }

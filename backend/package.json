@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "test": "LITEFX_DB_PATH=data/db.test.json npx tsx --test --test-concurrency=1 src/agents/*.test.ts src/store.test.ts src/routes.test.ts src/types.test.ts src/data/*.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

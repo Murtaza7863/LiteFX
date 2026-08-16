@@ -10,12 +10,16 @@ import { FX_TABLE } from "./types.js";
 // Frankfurter returns "1 USD = Y cur", so X = 1/Y.
 // ──────────────────────────────────────────────
 
-const SYMBOLS = Object.keys(FX_TABLE).filter((c) => c !== "USD").join(",");
-const FX_URL = `https://api.frankfurter.app/latest?from=USD&to=${SYMBOLS}`;
+// frankfurter.app 301s here; request all USD rates (unsupported
+// symbols are simply omitted — listing them in `to=` can 422).
+const FX_URL = "https://api.frankfurter.dev/v1/latest?base=USD";
 
 export async function refreshFx(): Promise<boolean> {
   try {
-    const res = await fetch(FX_URL, { signal: AbortSignal.timeout(4000) });
+    const res = await fetch(FX_URL, {
+      signal: AbortSignal.timeout(4000),
+      headers: { Accept: "application/json", "User-Agent": "LiteFX/1.0" },
+    });
     if (!res.ok) return false;
     const data = (await res.json()) as { rates?: Record<string, number> };
     const rates = data.rates ?? {};

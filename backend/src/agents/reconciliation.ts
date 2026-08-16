@@ -1,6 +1,11 @@
-import type { ReconciliationResult } from "../types";
+import type { Invoice, ReconciliationResult } from "../types";
 import { toUsd } from "../types";
-import { getStore, setReconciliationResults, setReconciliation } from "../store";
+import {
+  getStore,
+  setReconciliationResults,
+  setReconciliation,
+} from "../store";
+import type { StoreState } from "../store";
 
 // ──────────────────────────────────────────────
 // Agent 5 — B2B reconciliation agent (lower priority)
@@ -17,17 +22,41 @@ import { getStore, setReconciliationResults, setReconciliation } from "../store"
 
 const TOLERANCE_USD = 1.0; // anything within $1 is "reconciled"
 
+/** When the user entered their own trip (no seed invoices), bill each net creditor. */
+function ensureInvoices(store: StoreState): void {
+  if (store.invoices.length > 0) return;
+  const byTo = new Map<string, number>();
+  for (const o of store.netObligations) {
+    byTo.set(o.to, (byTo.get(o.to) ?? 0) + o.amountUsd);
+  }
+  const invoices: Invoice[] = [];
+  let i = 0;
+  for (const [id, usd] of byTo) {
+    const ent = store.entities.find((e) => e.id === id);
+    if (!ent) continue;
+    invoices.push({
+      id: `inv-auto-${++i}`,
+      vendorId: id,
+      vendorName: ent.name.trim(),
+      amount: Math.round(usd * 100) / 100,
+      currency: "USD",
+      bookingRef: `NET-${ent.name.trim().split(" ")[0]!.toUpperCase()}`,
+      status: "open",
+    });
+  }
+  store.invoices = invoices;
+}
+
 export function runReconciliation(): ReconciliationResult[] {
   const store = getStore();
+  ensureInvoices(store);
   const results: ReconciliationResult[] = [];
 
   for (const inv of store.invoices) {
     const invAmountUsd = toUsd(inv.amount, inv.currency);
 
     // Find net obligations where this vendor is the creditor (to)
-    const matched = store.netObligations.filter(
-      (ob) => ob.to === inv.vendorId
-    );
+    const matched = store.netObligations.filter((ob) => ob.to === inv.vendorId);
 
     if (matched.length === 0) {
       results.push({
@@ -42,13 +71,10 @@ export function runReconciliation(): ReconciliationResult[] {
     // Sum all settled (or routed) obligations to this vendor
     const totalSettledUsd = matched.reduce(
       (sum, ob) => sum + (ob.status === "settled" ? ob.amountUsd : 0),
-      0
+      0,
     );
 
-    const totalRoutedUsd = matched.reduce(
-      (sum, ob) => sum + ob.amountUsd,
-      0
-    );
+    const totalRoutedUsd = matched.reduce((sum, ob) => sum + ob.amountUsd, 0);
 
     // Match against the invoice
     const diff = Math.abs(totalRoutedUsd - invAmountUsd);
@@ -79,7 +105,7 @@ export function runReconciliation(): ReconciliationResult[] {
   return results;
 }
 
-export function getVendorSummary(): {
+function getVendorSummary(): {
   vendorId: string;
   vendorName: string;
   invoiceAmountUsd: number;
@@ -87,13 +113,16 @@ export function getVendorSummary(): {
   pendingUsd: number;
 }[] {
   const store = getStore();
-  const summary: Record<string, {
-    vendorId: string;
-    vendorName: string;
-    invoiceAmountUsd: number;
-    settledUsd: number;
-    pendingUsd: number;
-  }> = {};
+  const summary: Record<
+    string,
+    {
+      vendorId: string;
+      vendorName: string;
+      invoiceAmountUsd: number;
+      settledUsd: number;
+      pendingUsd: number;
+    }
+  > = {};
 
   for (const inv of store.invoices) {
     summary[inv.vendorId] = {

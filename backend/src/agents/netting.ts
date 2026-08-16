@@ -1,28 +1,35 @@
 import type { DebtEdge, Entity, NetObligation } from "../types";
-import { currencyOf, fromUsd, toUsd } from "../types";
+import { currencyOf, fromUsd } from "../types";
 import { getStore, setNetObligations, setNettingSummary } from "../store";
-import { bestRail } from "../data/railOptions";
+import { cheapestRail, feePctForPair } from "../data/railOptions";
 
 // ──────────────────────────────────────────────
 // Agent 1 — Netting agent
 //
 // Turns many pairwise, multi-currency debts into the
-// fewest possible net transfers using a greedy
-// "largest-debtor → largest-creditor" approach
-// (the same algorithm Splitwise uses for "simplify debts").
+// fewest cheap transfers:
+//   1. Convert everything to USD and compute net balances
+//      (who owes / is owed after all expenses).
+//   2. Match debtors to creditors by cheapest corridor
+//      first (local / SEPA → linked → claim link → USDC),
+//      not "largest debtor pays largest creditor".
 //
-// Not globally optimal in every edge case, but fast,
-// well-understood, and a good approximation. Don't
-// over-engineer into a full min-cost-flow solver for
-// the hackathon.
+// Splitwise-style largest-first is still computed as a
+// baseline so the UI can show extra fee savings from
+// corridor-aware matching.
 // ──────────────────────────────────────────────
 
 const EPSILON = 0.005; // half a cent — anything below this is "zero"
 
+interface Party {
+  id: string;
+  amount: number;
+}
+
 /** Find connected components in the debt graph using BFS. */
 function findConnectedComponents(
   entityIds: string[],
-  edges: DebtEdge[]
+  edges: DebtEdge[],
 ): string[][] {
   const adj = new Map<string, Set<string>>();
   for (const id of entityIds) adj.set(id, new Set());
@@ -54,11 +61,190 @@ function findConnectedComponents(
   return components;
 }
 
+function cloneParties(parties: Party[]): Party[] {
+  return parties.map((p) => ({ ...p }));
+}
+
+function entityById(entities: Entity[], id: string): Entity | undefined {
+  return entities.find((e) => e.id === id);
+}
+
+function hasAccount(ent: Entity | undefined): boolean {
+  return !!ent && ent.linkedRailAliases.length > 0;
+}
+
+function makeObligation(
+  id: string,
+  debtorId: string,
+  creditorId: string,
+  settleUsd: number,
+  entities: Entity[],
+  matchReason?: string,
+): NetObligation {
+  const recipient = entityById(entities, creditorId);
+  const settlementCurrency = currencyOf(recipient?.country ?? "US");
+  return {
+    id,
+    from: debtorId,
+    to: creditorId,
+    amountUsd: Math.round(settleUsd * 100) / 100,
+    amount: fromUsd(settleUsd, settlementCurrency),
+    settlementCurrency,
+    status: "pending",
+    matchReason,
+  };
+}
+
+/** Classic Splitwise simplify: largest debtor → largest creditor. */
+export function matchGreedy(
+  debtors: Party[],
+  creditors: Party[],
+  entities: Entity[],
+): NetObligation[] {
+  const ds = cloneParties(debtors).sort((a, b) => b.amount - a.amount);
+  const cs = cloneParties(creditors).sort((a, b) => b.amount - a.amount);
+  const obligations: NetObligation[] = [];
+  let ci = 0;
+  let di = 0;
+  let n = 0;
+
+  while (ci < cs.length && di < ds.length) {
+    const debtor = ds[di];
+    const creditor = cs[ci];
+    const settleAmount = Math.min(debtor.amount, creditor.amount);
+
+    if (settleAmount <= EPSILON) {
+      if (debtor.amount <= creditor.amount) di++;
+      else ci++;
+      continue;
+    }
+
+    obligations.push(
+      makeObligation(
+        `g-${++n}`,
+        debtor.id,
+        creditor.id,
+        settleAmount,
+        entities,
+      ),
+    );
+
+    debtor.amount = Math.round((debtor.amount - settleAmount) * 100) / 100;
+    creditor.amount = Math.round((creditor.amount - settleAmount) * 100) / 100;
+    if (debtor.amount <= EPSILON) di++;
+    if (creditor.amount <= EPSILON) ci++;
+  }
+
+  return obligations;
+}
+
+/**
+ * Prefer cheap corridors: repeatedly settle the remaining
+ * debtor–creditor pair with the lowest fee, breaking ties
+ * by larger amount (keeps the transfer count down).
+ */
+export function matchCheapestCorridor(
+  debtors: Party[],
+  creditors: Party[],
+  entities: Entity[],
+): NetObligation[] {
+  const ds = cloneParties(debtors);
+  const cs = cloneParties(creditors);
+  const obligations: NetObligation[] = [];
+  let n = 0;
+
+  while (true) {
+    let best: {
+      di: number;
+      ci: number;
+      settle: number;
+      feePct: number;
+      railName: string;
+    } | null = null;
+
+    for (let di = 0; di < ds.length; di++) {
+      if (ds[di].amount <= EPSILON) continue;
+      const sender = entityById(entities, ds[di].id);
+      if (!sender) continue;
+      for (let ci = 0; ci < cs.length; ci++) {
+        if (cs[ci].amount <= EPSILON) continue;
+        const recipient = entityById(entities, cs[ci].id);
+        if (!recipient) continue;
+        const pick = cheapestRail(
+          sender.country,
+          recipient.country,
+          hasAccount(recipient),
+        );
+        const settle = Math.min(ds[di].amount, cs[ci].amount);
+        if (
+          !best ||
+          pick.feeEstimatePct < best.feePct - 1e-9 ||
+          (Math.abs(pick.feeEstimatePct - best.feePct) < 1e-9 &&
+            settle > best.settle)
+        ) {
+          best = {
+            di,
+            ci,
+            settle,
+            feePct: pick.feeEstimatePct,
+            railName: pick.railName,
+          };
+        }
+      }
+    }
+
+    if (!best || best.settle <= EPSILON) break;
+
+    const sender = entityById(entities, ds[best.di].id);
+    const recipient = entityById(entities, cs[best.ci].id);
+    const reason = `Matched ${sender?.name.trim() ?? ds[best.di].id} → ${recipient?.name.trim() ?? cs[best.ci].id} on ${best.railName} (${best.feePct}% fee) — cheapest remaining corridor.`;
+
+    obligations.push(
+      makeObligation(
+        `net-${++n}`,
+        ds[best.di].id,
+        cs[best.ci].id,
+        best.settle,
+        entities,
+        reason,
+      ),
+    );
+
+    ds[best.di].amount =
+      Math.round((ds[best.di].amount - best.settle) * 100) / 100;
+    cs[best.ci].amount =
+      Math.round((cs[best.ci].amount - best.settle) * 100) / 100;
+  }
+
+  return obligations;
+}
+
+function feesFor(obligations: NetObligation[], entities: Entity[]): number {
+  let total = 0;
+  for (const o of obligations) {
+    const sender = entityById(entities, o.from);
+    const recipient = entityById(entities, o.to);
+    const pct = feePctForPair(
+      sender?.country ?? "US",
+      recipient?.country ?? "US",
+      hasAccount(recipient),
+    );
+    total += (o.amountUsd * pct) / 100;
+  }
+  return Math.round(total * 100) / 100;
+}
+
 export interface NettingResult {
   obligations: NetObligation[];
   rawEdgeCount: number;
   netEdgeCount: number;
   reductionRatio: number;
+  transfersSaved: number;
+  rawTotalUsd: number;
+  netTotalUsd: number;
+  feeSavingsUsd: number;
+  greedyFeeUsd: number;
+  corridorSavingsUsd: number;
   balances: { entityId: string; entityName: string; netUsd: number }[];
 }
 
@@ -67,19 +253,18 @@ export function runNetting(): NettingResult {
   const entities = store.entities;
   const debtEdges = store.debtEdges;
 
-  // Step 1 — all edges already carry amountUsd (converted at store-creation time).
-  // Group by connected component.
   const entityIds = entities.map((e) => e.id);
   const components = findConnectedComponents(entityIds, debtEdges);
 
   const obligations: NetObligation[] = [];
+  const greedyAll: NetObligation[] = [];
   const balances: NettingResult["balances"] = [];
-  let obCounter = 0;
+  let cheapCounter = 0;
+  let greedyCounter = 0;
 
   for (const comp of components) {
     const compSet = new Set(comp);
 
-    // Step 2 — compute each entity's net balance within this component.
     const netMap = new Map<string, number>();
     for (const id of comp) netMap.set(id, 0);
 
@@ -89,9 +274,9 @@ export function runNetting(): NettingResult {
       netMap.set(edge.to, (netMap.get(edge.to) ?? 0) + edge.amountUsd);
     }
 
-    // Record balances for the result
     for (const id of comp) {
-      const ent = entities.find((e) => e.id === id)!;
+      const ent = entities.find((e) => e.id === id);
+      if (!ent) continue;
       balances.push({
         entityId: id,
         entityName: ent.name.trim(),
@@ -99,77 +284,49 @@ export function runNetting(): NettingResult {
       });
     }
 
-    // Step 3 — split into creditors and debtors.
-    const creditors: { id: string; amount: number }[] = [];
-    const debtors: { id: string; amount: number }[] = [];
+    const creditors: Party[] = [];
+    const debtors: Party[] = [];
 
     for (const [id, bal] of netMap) {
       const rounded = Math.round(bal * 100) / 100;
       if (rounded > EPSILON) {
         creditors.push({ id, amount: rounded });
       } else if (rounded < -EPSILON) {
-        debtors.push({ id, amount: -rounded }); // store as positive magnitude
+        debtors.push({ id, amount: -rounded });
       }
     }
 
-    // Sort descending by amount for greedy matching.
-    creditors.sort((a, b) => b.amount - a.amount);
-    debtors.sort((a, b) => b.amount - a.amount);
+    const cheap = matchCheapestCorridor(debtors, creditors, entities);
+    for (const o of cheap) {
+      o.id = `net-${++cheapCounter}`;
+      obligations.push(o);
+    }
 
-    // Step 4 — greedily match largest debtor to largest creditor.
-    let ci = 0; // creditor index
-    let di = 0; // debtor index
-
-    while (ci < creditors.length && di < debtors.length) {
-      const debtor = debtors[di];
-      const creditor = creditors[ci];
-      const settleAmount = Math.min(debtor.amount, creditor.amount);
-
-      if (settleAmount <= EPSILON) {
-        // skip dust
-        if (debtor.amount <= creditor.amount) di++;
-        else ci++;
-        continue;
-      }
-
-      const recipient = entities.find((e) => e.id === creditor.id)!;
-      const settlementCurrency = currencyOf(recipient.country);
-
-      obligations.push({
-        id: `net-${++obCounter}`,
-        from: debtor.id,
-        to: creditor.id,
-        amountUsd: Math.round(settleAmount * 100) / 100,
-        amount: fromUsd(settleAmount, settlementCurrency),
-        settlementCurrency,
-        status: "pending",
-      });
-
-      debtor.amount = Math.round((debtor.amount - settleAmount) * 100) / 100;
-      creditor.amount = Math.round((creditor.amount - settleAmount) * 100) / 100;
-
-      if (debtor.amount <= EPSILON) di++;
-      if (creditor.amount <= EPSILON) ci++;
+    const greedy = matchGreedy(debtors, creditors, entities);
+    for (const o of greedy) {
+      o.id = `g-${++greedyCounter}`;
+      greedyAll.push(o);
     }
   }
 
   setNetObligations(obligations);
 
-  // Value metrics: what netting saves vs settling every raw debt individually.
-  const countryOf = (id: string) => entities.find((e) => e.id === id)?.country ?? "US";
-  const pairFeePct = (a: string, b: string): number => {
-    const ca = countryOf(a);
-    const cb = countryOf(b);
-    const local = bestRail(ca, cb, "local");
-    if (local) return local.feeEstimatePct;
-    const linked = bestRail(ca, cb, "linked");
-    if (linked) return linked.feeEstimatePct;
-    return bestRail(ca, cb, "stable_bridge")?.feeEstimatePct ?? 1.5;
-  };
+  const countryOf = (id: string) =>
+    entities.find((e) => e.id === id)?.country ?? "US";
+  const accountOf = (id: string) => hasAccount(entityById(entities, id));
+
   const rawTotalUsd = debtEdges.reduce((s, e) => s + e.amountUsd, 0);
   const netTotalUsd = obligations.reduce((s, o) => s + o.amountUsd, 0);
-  const naiveFeeUsd = debtEdges.reduce((s, e) => s + (e.amountUsd * pairFeePct(e.from, e.to)) / 100, 0);
-  const netFeeUsd = obligations.reduce((s, o) => s + (o.amountUsd * pairFeePct(o.from, o.to)) / 100, 0);
+  const naiveFeeUsd = debtEdges.reduce((s, e) => {
+    const pct = feePctForPair(
+      countryOf(e.from),
+      countryOf(e.to),
+      accountOf(e.to),
+    );
+    return s + (e.amountUsd * pct) / 100;
+  }, 0);
+  const netFeeUsd = feesFor(obligations, entities);
+  const greedyFeeUsd = feesFor(greedyAll, entities);
 
   const summary = {
     rawEdgeCount: debtEdges.length,
@@ -182,6 +339,9 @@ export function runNetting(): NettingResult {
     rawTotalUsd: Math.round(rawTotalUsd * 100) / 100,
     netTotalUsd: Math.round(netTotalUsd * 100) / 100,
     feeSavingsUsd: Math.round(Math.max(0, naiveFeeUsd - netFeeUsd) * 100) / 100,
+    greedyFeeUsd,
+    corridorSavingsUsd:
+      Math.round(Math.max(0, greedyFeeUsd - netFeeUsd) * 100) / 100,
     balances: balances.sort((a, b) => b.netUsd - a.netUsd),
   };
   setNettingSummary(summary);

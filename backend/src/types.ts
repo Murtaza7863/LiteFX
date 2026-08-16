@@ -61,6 +61,7 @@ export interface NetObligation {
   considered?: RailConsideration[]; // rails the router evaluated for this corridor
   feeUsd?: number;
   timeHours?: number;
+  matchReason?: string; // why netting paired these two people
 }
 
 // One rail the router evaluated for an obligation, so the UI can
@@ -76,11 +77,10 @@ export interface RailConsideration {
 
 export interface RailOption {
   type: RailType;
-  corridor: [string, string]; // [countryA, countryB] — order-independent
+  corridor: [string, string];
   railName: string;
   feeEstimatePct: number;
   timeEstimateHours: number;
-  requiresRecipientAccount: boolean;
 }
 
 export interface ClaimLink {
@@ -144,6 +144,8 @@ export interface NettingSummary {
   rawTotalUsd: number;
   netTotalUsd: number;
   feeSavingsUsd: number;
+  greedyFeeUsd: number;
+  corridorSavingsUsd: number;
   balances: { entityId: string; entityName: string; netUsd: number }[];
 }
 
@@ -160,7 +162,7 @@ export interface VendorSummaryRow {
 // such as Open Exchange Rates or the Wise/Fixer API).
 // ──────────────────────────────────────────────
 
-import { STATIC_FX, currencyOf } from "./data/countries";
+import { STATIC_FX, currencyOf, COUNTRIES } from "./data/countries";
 
 // Live-overridable FX table (1 unit of currency = X USD), seeded from a
 // broad static base so any supported country works out of the box.
@@ -183,12 +185,19 @@ export function fromUsd(amountUsd: number, currency: string): number {
 // these would come from a compliance rules engine / sanctions screening).
 // ──────────────────────────────────────────────
 
+const EURO_DOMESTIC = 10000;
+
 export const CORRIDOR_LIMITS: Record<string, number> = {
-  // key format: "FROM_COUNTRY->TO_COUNTRY"
-  "SG->SG": 20000,
-  "TH->TH": 150000,
-  "US->US": 10000,
-  "DE->DE": 10000,
+  ...Object.fromEntries(
+    COUNTRIES.map((c) => [
+      `${c.code}->${c.code}`,
+      c.currency === "EUR" || c.code === "US" || c.code === "GB"
+        ? EURO_DOMESTIC
+        : c.code === "TH"
+          ? 150000
+          : 20000,
+    ]),
+  ),
   "SG->TH": 5000,
   "TH->SG": 5000,
   "US->DE": 300,
@@ -203,5 +212,8 @@ export const CORRIDOR_LIMITS: Record<string, number> = {
   "DE->TH": 8000,
 };
 
-export const FREQUENCY_THRESHOLD = 3; // flag if same entity pair nets > N times
-export const FREQUENCY_WINDOW_HOURS = 168; // rolling 7 days
+export function corridorLimit(from: string, to: string): number | undefined {
+  return CORRIDOR_LIMITS[`${from}->${to}`];
+}
+
+export const FREQUENCY_THRESHOLD = 3;

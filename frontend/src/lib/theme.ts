@@ -5,11 +5,11 @@
 import { COUNTRIES, flagFromCode } from "./countries";
 
 export const COUNTRY_FLAGS: Record<string, string> = Object.fromEntries(
-  COUNTRIES.map((c) => [c.code, flagFromCode(c.code)])
+  COUNTRIES.map((c) => [c.code, flagFromCode(c.code)]),
 );
 
 export const COUNTRY_NAMES: Record<string, string> = Object.fromEntries(
-  COUNTRIES.map((c) => [c.code, c.name])
+  COUNTRIES.map((c) => [c.code, c.name]),
 );
 
 // A palette of pleasant gradient pairs for avatars.
@@ -38,9 +38,12 @@ export function avatarGradient(id: string): string {
 }
 
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  const first = parts[0][0] ?? "";
+  const last = parts[parts.length - 1][0] ?? "";
+  return (first + last).toUpperCase();
 }
 
 // Rail visual tokens shared across components.

@@ -1,9 +1,12 @@
 import type { ComplianceFlag } from "../types";
+import { corridorLimit, FREQUENCY_THRESHOLD } from "../types";
 import {
-  CORRIDOR_LIMITS,
-  FREQUENCY_THRESHOLD,
-} from "../types";
-import { getEntity, getStore, setComplianceFlags, setComplianceRan, updateNetObligation } from "../store";
+  getEntity,
+  getStore,
+  setComplianceFlags,
+  setComplianceRan,
+  updateNetObligation,
+} from "../store";
 
 // ──────────────────────────────────────────────
 // Agent 4 — Compliance stub (lower priority)
@@ -32,7 +35,7 @@ export function evaluateCompliance(): ComplianceFlag[] {
     if (!sender || !recipient) continue;
 
     const key = `${sender.country}->${recipient.country}`;
-    const limit = CORRIDOR_LIMITS[key];
+    const limit = corridorLimit(sender.country, recipient.country);
     const pairKey = [ob.from, ob.to].sort().join("↔");
     const count = (pairCount.get(pairKey) ?? 0) + 1;
     pairCount.set(pairKey, count);
@@ -41,19 +44,15 @@ export function evaluateCompliance(): ComplianceFlag[] {
     const obFlags: ComplianceFlag[] = [];
 
     // Check 1 — per-corridor limit exceeded
-    if (limit !== undefined) {
-      const amountInSettlementCurrency = ob.amount;
-      // Convert to the settlement currency's value in USD for comparison
-      if (ob.amountUsd > limit) {
-        const f: ComplianceFlag = {
-          obligationId: ob.id,
-          type: "limit_exceeded",
-          message: `Amount ${ob.amountUsd.toFixed(2)} USD exceeds corridor limit ${limit} USD for ${key}.`,
-          severity: "warning",
-        };
-        flags.push(f);
-        obFlags.push(f);
-      }
+    if (limit !== undefined && ob.amountUsd > limit) {
+      const f: ComplianceFlag = {
+        obligationId: ob.id,
+        type: "limit_exceeded",
+        message: `Amount ${ob.amountUsd.toFixed(2)} USD exceeds corridor limit ${limit} USD for ${key}.`,
+        severity: "warning",
+      };
+      flags.push(f);
+      obFlags.push(f);
     }
 
     // Check 2 — frequency anomaly (same pair nets > threshold)
@@ -68,9 +67,7 @@ export function evaluateCompliance(): ComplianceFlag[] {
       obFlags.push(f);
     }
 
-    if (obFlags.length > 0) {
-      updateNetObligation(ob.id, { complianceFlags: obFlags });
-    }
+    updateNetObligation(ob.id, { complianceFlags: obFlags });
   }
 
   setComplianceFlags(flags);
