@@ -41,16 +41,16 @@ export function Stepper({ steps, busy = false }: Props) {
                     : "cursor-default"
                 } ${
                   done
-                    ? "bg-emerald-500/10 text-emerald-300"
+                    ? "bg-[#9aaa8c]/10 text-[#9aaa8c]"
                     : isLoading
-                      ? "bg-cyan-500/10 text-cyan-200"
+                      ? "bg-white/[0.08] text-slate-100"
                       : enabled
                         ? "bg-white/[0.06] text-slate-200"
                         : "text-slate-500"
                 }`}
               >
                 {isLoading ? (
-                  <span className="border-cyan-300 h-3 w-3 animate-spin rounded-full border-2 border-t-transparent" />
+                  <span className="border-slate-300 h-3 w-3 animate-spin rounded-full border-2 border-t-transparent" />
                 ) : (
                   <span className="h-3.5 w-3.5">{step.icon}</span>
                 )}

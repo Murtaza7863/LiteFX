@@ -6,7 +6,7 @@
 export type RailType = "local" | "linked" | "claim_link" | "stable_bridge";
 
 export interface RailAlias {
-  railType: string; // e.g. "paynow", "promptpay", "zelle", "sepa"
+  railType: string;
   alias: string; // phone or handle
 }
 
@@ -172,7 +172,7 @@ export { currencyOf };
 
 export function toUsd(amount: number, currency: string): number {
   const rate = FX_TABLE[currency] ?? 1;
-  return Math.round(amount * rate * 100) / 100;
+  return Math.round(amount * rate * 10000) / 10000;
 }
 
 export function fromUsd(amountUsd: number, currency: string): number {

@@ -147,6 +147,83 @@ test("POST /expenses rejects an unsupported currency", async () => {
   assert.match(body.message, /currency/i);
 });
 
+test("POST /expenses rejects a non-finite amount", async () => {
+  asUser(() => loadTrip([traveler("a", "A", "US", "zelle")]));
+  const { status, body } = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "a",
+      amount: "Infinity",
+      currency: "USD",
+      description: "Nope",
+    }),
+  });
+  assert.equal(status, 400);
+  assert.match(body.message, /amount/i);
+});
+
+test("POST /expenses rejects NaN split shares", async () => {
+  asUser(() =>
+    loadTrip([
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+    ]),
+  );
+  const { status, body } = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "a",
+      amount: 20,
+      currency: "USD",
+      participantIds: ["a", "b"],
+      split: { mode: "percent", parts: { b: "nope" } },
+    }),
+  });
+  assert.equal(status, 400);
+  assert.match(body.message, /split/i);
+});
+
+test("POST /entities rejects a whitespace-only name", async () => {
+  const { status, body } = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "   ", country: "US" }),
+  });
+  assert.equal(status, 400);
+  assert.match(body.message, /name/i);
+});
+
+test("POST /expenses can split among others without adding the payer", async () => {
+  asUser(() =>
+    loadTrip([
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+      traveler("c", "C", "US", "zelle"),
+    ]),
+  );
+  const { status, body } = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "a",
+      participantIds: ["b", "c"],
+      amount: 80,
+      currency: "USD",
+      description: "Their dinner",
+    }),
+  });
+  assert.equal(status, 200);
+  assert.deepEqual(body.expense.participantIds.sort(), ["b", "c"]);
+  const { body: scenario } = await json("/scenario");
+  assert.deepEqual(
+    scenario.debtEdges
+      .map(
+        (e: { from: string; to: string; amountUsd: number }) =>
+          `${e.from}->${e.to}:${e.amountUsd}`,
+      )
+      .sort(),
+    ["b->a:40", "c->a:40"],
+  );
+});
+
 test("POST /engine/run nets and routes the sample trip", async () => {
   asUser(() => seedStore());
   const { status, body } = await json("/engine/run", { method: "POST" });
@@ -201,6 +278,7 @@ test("POST /entities then GET /scenario includes the traveler", async () => {
   });
   assert.equal(created.status, 200);
   assert.equal(created.body.success, true);
+  assert.equal(created.body.entity.linkedRailAliases[0].railType, "PayNow");
   const scenario = await json("/scenario");
   assert.equal(scenario.body.entities.length, 1);
   assert.equal(scenario.body.entities[0].name, "Sam");
@@ -314,6 +392,24 @@ test("sample trip plan after engine run includes Eve's link-account tip", async 
       (i: { recipientName: string }) => i.recipientName === "Eve Lim",
     ),
   );
+});
+
+test("GET /claim/:token works without a session cookie", async () => {
+  asUser(() => seedStore());
+  await json("/engine/run", { method: "POST" });
+  const scenario = await json("/scenario");
+  const claimOb = scenario.body.netObligations.find(
+    (o: { chosenRail?: string }) => o.chosenRail === "claim_link",
+  );
+  assert.ok(claimOb);
+  const settled = await json(`/settlement/${claimOb.id}/settle`, {
+    method: "POST",
+  });
+  const token = settled.body.link.token as string;
+  const { status, body } = await json(`/claim/${token}`, undefined, false);
+  assert.equal(status, 200);
+  assert.ok(body.recipient);
+  assert.ok(Array.isArray(body.payoutOptions));
 });
 
 test("GET /scenario requires sign-in", async () => {

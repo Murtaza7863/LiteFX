@@ -23,6 +23,19 @@ export interface FxSnapshot {
   rates: Record<string, number>;
 }
 
+/** Keep extra digits for weak currencies (IDR, VND, KRW). */
+export function roundUsdPerUnit(x: number): number {
+  if (x >= 0.01) return Math.round(x * 1e6) / 1e6;
+  return Math.round(x * 1e8) / 1e8;
+}
+
+export function formatUsdPerUnit(rate: number): string {
+  if (rate >= 0.1) return rate.toFixed(2);
+  if (rate >= 0.01) return rate.toFixed(3);
+  if (rate >= 0.001) return rate.toFixed(4);
+  return rate.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 export function getFxSnapshot(currencies?: string[]): FxSnapshot {
   const keys =
     currencies === undefined
@@ -35,11 +48,23 @@ export function getFxSnapshot(currencies?: string[]): FxSnapshot {
   return { live: fxLive, asOf: fxAsOf, rates };
 }
 
+function abortAfter(ms: number): AbortSignal {
+  if (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal) {
+    return AbortSignal.timeout(ms);
+  }
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(), ms);
+  return ctrl.signal;
+}
+
 export async function refreshFx(): Promise<boolean> {
   try {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    // Forbidden in browsers (and can force a CORS preflight). Keep it on Node.
+    if (typeof window === "undefined") headers["User-Agent"] = "LiteFX/1.0";
     const res = await fetch(FX_URL, {
-      signal: AbortSignal.timeout(4000),
-      headers: { Accept: "application/json", "User-Agent": "LiteFX/1.0" },
+      signal: abortAfter(4000),
+      headers,
     });
     if (!res.ok) return false;
     const data = (await res.json()) as {
@@ -51,7 +76,7 @@ export async function refreshFx(): Promise<boolean> {
     for (const cur of Object.keys(rates)) {
       const perUsd = rates[cur];
       if (typeof perUsd === "number" && perUsd > 0) {
-        FX_TABLE[cur] = Math.round((1 / perUsd) * 10000) / 10000;
+        FX_TABLE[cur] = roundUsdPerUnit(1 / perUsd);
         updated = true;
       }
     }

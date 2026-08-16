@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { cheapestRail } from "../data/railOptions.js";
 import { clearStore, getStore, seedStore } from "../store.js";
-import { traveler } from "../testUtil.js";
+import { traveler, expense, loadTrip } from "../testUtil.js";
 import { matchCheapestCorridor, matchGreedy, runNetting } from "./netting.js";
+import { runRouting } from "./railRouter.js";
 
 afterEach(() => {
   clearStore();
@@ -211,4 +212,73 @@ test("edges to unknown people are ignored so balances still close", () => {
   assert.equal(result.obligations[0].from, "a");
   assert.equal(result.obligations[0].to, "b");
   assert.equal(result.obligations[0].amountUsd, 40);
+});
+
+test("mixed-currency trip across JP/BR/KE/EG/KH/NG nets and routes without throwing", () => {
+  loadTrip(
+    [
+      traveler("jp", "Yuki", "JP", "Zengin"),
+      traveler("br", "Ana", "BR", "Pix"),
+      traveler("ke", "Amina", "KE", "PesaLink"),
+      traveler("eg", "Omar", "EG", "InstaPay"),
+      traveler("kh", "Sophea", "KH", "Bakong"),
+      traveler("ng", "Chidi", "NG", "NIP"),
+    ],
+    [
+      expense({
+        id: "sushi",
+        payerId: "jp",
+        participantIds: ["jp", "br", "ke", "eg", "kh", "ng"],
+        amount: 18000,
+        currency: "JPY",
+      }),
+      expense({
+        id: "churrasco",
+        payerId: "br",
+        participantIds: ["jp", "br", "ke", "eg", "kh", "ng"],
+        amount: 600,
+        currency: "BRL",
+      }),
+      expense({
+        id: "safari",
+        payerId: "ke",
+        participantIds: ["jp", "br", "ke", "eg", "kh", "ng"],
+        amount: 24000,
+        currency: "KES",
+      }),
+      expense({
+        id: "pyramids",
+        payerId: "eg",
+        participantIds: ["jp", "br", "ke", "eg", "kh", "ng"],
+        amount: 4000,
+        currency: "EGP",
+      }),
+      expense({
+        id: "temple",
+        payerId: "kh",
+        participantIds: ["jp", "br", "ke", "eg", "kh", "ng"],
+        amount: 800_000,
+        currency: "KHR",
+      }),
+      expense({
+        id: "jollof",
+        payerId: "ng",
+        participantIds: ["jp", "br", "ke", "eg", "kh", "ng"],
+        amount: 150_000,
+        currency: "NGN",
+      }),
+    ],
+  );
+  const result = runNetting();
+  assert.ok(result.netEdgeCount > 0);
+  const balSum = result.balances.reduce((s, b) => s + b.netUsd, 0);
+  assert.ok(Math.abs(balSum) < 0.05, `balances should net to 0, got ${balSum}`);
+  const obs = runRouting();
+  assert.equal(obs.length, result.netEdgeCount);
+  for (const o of obs) {
+    assert.equal(o.status, "routed", `${o.from}→${o.to} not routed`);
+    assert.ok(o.chosenRail, `${o.from}→${o.to} missing rail`);
+    assert.ok(o.settlementCurrency);
+    assert.ok(o.amount > 0);
+  }
 });

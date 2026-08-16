@@ -24,16 +24,16 @@ export function createApp() {
   );
   app.use(express.json({ limit: "200kb" }));
   app.use("/api", apiRouter);
-  app.use(pagesRouter);
 
   const dist = path.join(__dirname, "..", "..", "frontend", "dist");
   if (existsSync(dist)) {
     app.use(express.static(dist));
     app.get("*", (req, res, next) => {
-      if (req.path.startsWith("/api") || req.path.startsWith("/claim"))
-        return next();
+      if (req.path.startsWith("/api")) return next();
       res.sendFile(path.join(dist, "index.html"));
     });
+  } else {
+    app.use(pagesRouter);
   }
   return app;
 }

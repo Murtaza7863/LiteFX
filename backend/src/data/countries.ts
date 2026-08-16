@@ -117,7 +117,7 @@ export const COUNTRIES: Country[] = [
     code: "NZ",
     name: "New Zealand",
     currency: "NZD",
-    rails: ["SBI"],
+    rails: ["PayTo"],
     wallets: ["PayPal", "PoLi"],
   },
   {
@@ -313,7 +313,7 @@ export const COUNTRIES: Country[] = [
     code: "SA",
     name: "Saudi Arabia",
     currency: "SAR",
-    rails: ["sarie"],
+    rails: ["SARIE"],
     wallets: ["STC Pay", "Apple Pay"],
   },
   {
@@ -330,7 +330,198 @@ export const COUNTRIES: Country[] = [
     rails: ["FAST", "EFT"],
     wallets: ["Papara", "Paycell"],
   },
+  {
+    code: "LU",
+    name: "Luxembourg",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["PayPal", "Payconiq"],
+  },
+  {
+    code: "SK",
+    name: "Slovakia",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["PayPal", "Apple Pay"],
+  },
+  {
+    code: "SI",
+    name: "Slovenia",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["Flik", "PayPal"],
+  },
+  {
+    code: "HR",
+    name: "Croatia",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["KEKS Pay", "PayPal"],
+  },
+  {
+    code: "HU",
+    name: "Hungary",
+    currency: "HUF",
+    rails: ["GIRO Instant", "SEPA"],
+    wallets: ["SimplePay", "PayPal"],
+  },
+  {
+    code: "RO",
+    name: "Romania",
+    currency: "RON",
+    rails: ["SEPA Instant", "Transfond"],
+    wallets: ["BT Pay", "PayPal"],
+  },
+  {
+    code: "BG",
+    name: "Bulgaria",
+    currency: "BGN",
+    rails: ["BISERA", "SEPA"],
+    wallets: ["Revolut", "PayPal"],
+  },
+  {
+    code: "LT",
+    name: "Lithuania",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["Paysera", "Revolut"],
+  },
+  {
+    code: "LV",
+    name: "Latvia",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["Revolut", "PayPal"],
+  },
+  {
+    code: "EE",
+    name: "Estonia",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["Revolut", "PayPal"],
+  },
+  {
+    code: "MT",
+    name: "Malta",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["Revolut", "PayPal"],
+  },
+  {
+    code: "CY",
+    name: "Cyprus",
+    currency: "EUR",
+    rails: ["SEPA Instant", "SEPA Credit Transfer"],
+    wallets: ["Revolut", "PayPal"],
+  },
+  {
+    code: "EG",
+    name: "Egypt",
+    currency: "EGP",
+    rails: ["InstaPay"],
+    wallets: ["Vodafone Cash", "InstaPay"],
+  },
+  {
+    code: "KE",
+    name: "Kenya",
+    currency: "KES",
+    rails: ["PesaLink"],
+    wallets: ["M-Pesa", "Airtel Money"],
+  },
+  {
+    code: "NG",
+    name: "Nigeria",
+    currency: "NGN",
+    rails: ["NIP"],
+    wallets: ["Opay", "PalmPay"],
+  },
+  {
+    code: "GH",
+    name: "Ghana",
+    currency: "GHS",
+    rails: ["GhIPSS"],
+    wallets: ["MTN MoMo", "Telecel Cash"],
+  },
+  {
+    code: "MA",
+    name: "Morocco",
+    currency: "MAD",
+    rails: ["Virement"],
+    wallets: ["CashPlus", "Orange Money"],
+  },
+  {
+    code: "QA",
+    name: "Qatar",
+    currency: "QAR",
+    rails: ["QATCH"],
+    wallets: ["NAPS", "Apple Pay"],
+  },
+  {
+    code: "KW",
+    name: "Kuwait",
+    currency: "KWD",
+    rails: ["KNET"],
+    wallets: ["KNET", "Apple Pay"],
+  },
+  {
+    code: "BH",
+    name: "Bahrain",
+    currency: "BHD",
+    rails: ["Fawri+", "Benefit"],
+    wallets: ["BenefitPay", "Apple Pay"],
+  },
+  {
+    code: "OM",
+    name: "Oman",
+    currency: "OMR",
+    rails: ["Ubar"],
+    wallets: ["OmanNet", "Apple Pay"],
+  },
+  {
+    code: "JO",
+    name: "Jordan",
+    currency: "JOD",
+    rails: ["CliQ"],
+    wallets: ["Dinarak", "Orange Money"],
+  },
+  {
+    code: "KH",
+    name: "Cambodia",
+    currency: "KHR",
+    rails: ["Bakong"],
+    wallets: ["Wing", "ABA"],
+  },
+  {
+    code: "LK",
+    name: "Sri Lanka",
+    currency: "LKR",
+    rails: ["CEFTS", "LankaPay"],
+    wallets: ["eZ Cash", "FriMi"],
+  },
+  {
+    code: "BD",
+    name: "Bangladesh",
+    currency: "BDT",
+    rails: ["NPSB"],
+    wallets: ["bKash", "Nagad"],
+  },
+  {
+    code: "PK",
+    name: "Pakistan",
+    currency: "PKR",
+    rails: ["Raast"],
+    wallets: ["JazzCash", "Easypaisa"],
+  },
+  {
+    code: "NP",
+    name: "Nepal",
+    currency: "NPR",
+    rails: ["connectIPS"],
+    wallets: ["eSewa", "Khalti"],
+  },
 ];
+
+COUNTRIES.sort((a, b) => a.name.localeCompare(b.name));
 
 export const countryByCode = (code: string): Country | undefined =>
   COUNTRIES.find((c) => c.code === code.toUpperCase());
@@ -355,6 +546,17 @@ export function railsFor(code: string): string[] {
 
 export function primaryRail(code: string): string {
   return railsFor(code)[0];
+}
+
+/** Map a stored/posted rail name onto the country's canonical list. */
+export function canonicalizeRail(
+  country: string,
+  rail?: string | null,
+): string | null {
+  if (rail == null || String(rail).trim() === "") return null;
+  const rails = railsFor(country);
+  const want = String(rail).trim().toLowerCase();
+  return rails.find((r) => r.toLowerCase() === want) ?? rails[0] ?? null;
 }
 
 /** Claim-link payout methods for a recipient's country. */
@@ -415,6 +617,24 @@ export const STATIC_FX: Record<string, number> = {
   CZK: 0.043,
   TRY: 0.03,
   ILS: 0.27,
+  HUF: 0.0028,
+  RON: 0.22,
+  BGN: 0.55,
+  EGP: 0.021,
+  KES: 0.0077,
+  NGN: 0.00065,
+  MAD: 0.1,
+  QAR: 0.27,
+  KHR: 0.00024,
+  LKR: 0.0033,
+  BDT: 0.0082,
+  PKR: 0.0036,
+  NPR: 0.0074,
+  GHS: 0.064,
+  KWD: 3.25,
+  BHD: 2.65,
+  OMR: 2.6,
+  JOD: 1.41,
 };
 
 // Euro + SEPA/EEA countries we support: they settle as local SEPA Instant
@@ -436,6 +656,18 @@ export const SEPA_COUNTRIES = new Set([
   "SE",
   "DK",
   "NO",
+  "LU",
+  "SK",
+  "SI",
+  "HR",
+  "HU",
+  "RO",
+  "BG",
+  "LT",
+  "LV",
+  "EE",
+  "MT",
+  "CY",
 ]);
 
 /** Local/union rail name if these two countries can settle as "local". */
@@ -455,12 +687,16 @@ export const LINKED_CORRIDORS: Record<string, string> = {
   "ID-MY": "QRIS ↔ DuitNow",
   "ID-TH": "QRIS ↔ PromptPay",
   "PH-SG": "InstaPay ↔ PayNow",
-  "PH-MY": "InstaPay ↔ DuitNow",
+  "MY-PH": "InstaPay ↔ DuitNow",
   "PH-TH": "InstaPay ↔ PromptPay",
   "HK-SG": "FPS ↔ PayNow",
   "HK-TH": "FPS ↔ PromptPay",
   "AU-SG": "NPP ↔ PayNow",
   "AE-IN": "Aani ↔ UPI",
+  "KH-TH": "Bakong ↔ PromptPay",
+  "KH-SG": "Bakong ↔ PayNow",
+  "TH-VN": "VietQR ↔ PromptPay",
+  "SG-VN": "VietQR ↔ PayNow",
 };
 
 export const linkedKey = (a: string, b: string): string =>

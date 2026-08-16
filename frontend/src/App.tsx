@@ -10,7 +10,7 @@ import type {
 } from "./api/client";
 import type { Step } from "./components/Stepper";
 
-import { client } from "./api/client";
+import { client, isStaticEngine } from "./api/client";
 import { AccountMenu } from "./components/AccountMenu";
 import { AddDataForms } from "./components/AddDataForms";
 import { AuthScreen } from "./components/AuthScreen";
@@ -29,7 +29,7 @@ import {
   IconAlertTriangle,
   IconChevron,
 } from "./components/icons";
-import { LogoMark } from "./components/Logo";
+import { LogoMark, Wordmark } from "./components/Logo";
 import { ObligationCard } from "./components/ObligationCard";
 import { ObligationDetail } from "./components/ObligationDetail";
 import { ReconciliationView } from "./components/ReconciliationView";
@@ -37,7 +37,7 @@ import { ScenarioOverview } from "./components/ScenarioOverview";
 import { InsightsPanel, SharePlanButton } from "./components/SharePlan";
 import { Stepper } from "./components/Stepper";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { COUNTRY_FLAGS } from "./lib/theme";
+import { countryFlag, RAIL_META } from "./lib/theme";
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -110,9 +110,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void client.me().then(setUser);
     const onUnauth = () => setUser(null);
     window.addEventListener("litefx:unauthorized", onUnauth);
+    void (async () => {
+      try {
+        let u = await client.me();
+        // GitHub Pages has no API — open the sample trip instead of a login wall.
+        if (!u && isStaticEngine) {
+          u = await client.demo();
+          await client.seed();
+        }
+        setUser(u);
+      } catch {
+        setUser(null);
+      }
+    })();
     return () => window.removeEventListener("litefx:unauthorized", onUnauth);
   }, []);
 
@@ -131,10 +143,19 @@ export default function App() {
   );
 
   const handleClear = useCallback(async () => {
+    if (
+      !window.confirm(
+        "Clear all travelers and expenses on this trip? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
     try {
       await client.clear();
       setEditEntityId(null);
       setEditExpenseId(null);
+      setClaimModalToken(null);
+      setDetailId(null);
       await fetchScenario();
       notify("Cleared — add your own travelers & expenses");
     } catch (e) {
@@ -143,31 +164,65 @@ export default function App() {
   }, [fetchScenario, notify]);
 
   const handleLoadSample = useCallback(async () => {
+    if (
+      scenario &&
+      (scenario.entities.length > 0 || scenario.expenses.length > 0) &&
+      !window.confirm(
+        "Replace this trip with the sample travelers and expenses?",
+      )
+    ) {
+      return;
+    }
     try {
       await client.seed();
       setEditEntityId(null);
       setEditExpenseId(null);
+      setClaimModalToken(null);
+      setDetailId(null);
       await fetchScenario();
       notify("Sample trip loaded");
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [fetchScenario, notify]);
+  }, [fetchScenario, notify, scenario]);
 
   const handleDeleteExpense = useCallback(
     async (id: string) => {
-      await client.deleteExpense(id);
-      await fetchScenario();
-      notify("Expense removed — debts recomputed");
+      if (!window.confirm("Remove this expense?")) return;
+      try {
+        await client.deleteExpense(id);
+        setEditExpenseId((cur) => (cur === id ? null : cur));
+        setClaimModalToken(null);
+        setDetailId(null);
+        await fetchScenario();
+        notify("Expense removed — debts recomputed");
+      } catch (e) {
+        setError((e as Error).message);
+      }
     },
     [fetchScenario, notify],
   );
 
   const handleDeleteTraveler = useCallback(
     async (id: string) => {
-      await client.deleteEntity(id);
-      await fetchScenario();
-      notify("Traveler removed");
+      if (
+        !window.confirm(
+          "Remove this traveler? Expenses they paid will be deleted, and they will be taken out of other splits.",
+        )
+      ) {
+        return;
+      }
+      try {
+        await client.deleteEntity(id);
+        setEditEntityId((cur) => (cur === id ? null : cur));
+        setEditExpenseId(null);
+        setClaimModalToken(null);
+        setDetailId(null);
+        await fetchScenario();
+        notify("Traveler removed");
+      } catch (e) {
+        setError((e as Error).message);
+      }
     },
     [fetchScenario, notify],
   );
@@ -177,6 +232,8 @@ export default function App() {
     try {
       const r = await client.runNetting();
       setNettingResult(r);
+      setClaimModalToken(null);
+      setDetailId(null);
       const s = await client.getScenario();
       setScenario(s);
       notify(`Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers`);
@@ -198,6 +255,8 @@ export default function App() {
       const r = await client.runEngine();
       setNettingResult(r);
       setRailTypes(r.railTypesExercised);
+      setClaimModalToken(null);
+      setDetailId(null);
       const s = await client.getScenario();
       setScenario(s);
       setComplianceRan(!!s.complianceRan);
@@ -350,12 +409,21 @@ export default function App() {
   };
 
   const handleReset = async () => {
+    if (
+      !window.confirm(
+        "Replace this trip with the sample travelers and expenses?",
+      )
+    ) {
+      return;
+    }
     setLoading("reset");
     try {
       await client.seed();
       notify("Reset to sample trip");
       setEditEntityId(null);
       setEditExpenseId(null);
+      setClaimModalToken(null);
+      setDetailId(null);
       setNettingResult(null);
       setRailTypes([]);
       setComplianceRan(false);
@@ -383,6 +451,10 @@ export default function App() {
     setComplianceRan(false);
     setComplianceFlags([]);
     setReconData(null);
+    setClaimModalToken(null);
+    setDetailId(null);
+    setEditEntityId(null);
+    setEditExpenseId(null);
   }, []);
 
   const entityMap = useMemo(
@@ -477,7 +549,7 @@ export default function App() {
   if (user === undefined) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
-        <div className="brand-gradient animate-pulse-glow h-10 w-10 rounded-xl" />
+        <LogoMark size={40} />
         <p className="text-slate-500 text-sm">Loading LiteFX…</p>
       </div>
     );
@@ -490,7 +562,7 @@ export default function App() {
   if (!scenario) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-4">
-        <div className="brand-gradient animate-pulse-glow h-10 w-10 rounded-xl" />
+        <LogoMark size={40} />
         <p className="text-slate-500 text-sm">
           {error ?? "Loading your trip…"}
         </p>
@@ -530,11 +602,11 @@ export default function App() {
   const graphBlock = (
     <Collapsible
       key={hasNetted ? "netted" : "raw"}
-      title={hasNetted ? "Netted graph" : "Debt graph"}
+      title="Who owes whom"
       sub={
         hasNetted
-          ? `${obligations.length} collapsed transfers`
-          : `${debtCount} pairwise debts`
+          ? `${obligations.length} transfer${obligations.length === 1 ? "" : "s"}`
+          : `${debtCount} IOU${debtCount === 1 ? "" : "s"}`
       }
       defaultOpen={!hasNetted}
       badge={
@@ -592,13 +664,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans">
-      <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
+      <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header-bg)]">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-2.5">
             <LogoMark size={32} />
-            <p className="font-display text-[16px] leading-none font-bold tracking-tight">
-              Lite<span className="brand-text">FX</span>
-            </p>
+            <Wordmark className="text-[1.15rem]" />
           </div>
           <div className="flex items-center gap-1">
             {headerAction && (
@@ -625,8 +695,8 @@ export default function App() {
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-5 sm:px-6">
         {error && (
-          <div className="bg-red-500/10 border-red-500/25 animate-fade-in rounded-xl border p-3.5">
-            <p className="text-red-300 text-sm">
+          <div className="animate-fade-in rounded-xl border border-[#c48878]/25 bg-[#c48878]/10 p-3.5">
+            <p className="text-sm text-[#c48878]">
               <span className="font-semibold">Something went wrong:</span>{" "}
               {error}
             </p>
@@ -653,9 +723,9 @@ export default function App() {
         {hasNetted && (
           <section className="animate-fade-in-up">
             <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-slate-100 text-base font-semibold">
+              <h2 className="font-display text-slate-100 text-[1.35rem] font-semibold tracking-[-0.03em]">
                 Transfers
-                <span className="text-slate-500 ml-2 text-xs font-normal">
+                <span className="text-slate-500 ml-2 font-sans text-xs font-normal tracking-normal">
                   {obligations.length} to settle
                 </span>
               </h2>
@@ -672,11 +742,11 @@ export default function App() {
                 o.claimToken &&
                 o.status !== "settled",
             ) && (
-              <p className="text-amber-200 mb-3 text-[12px]">
+              <p className="mb-3 text-[12px] text-[#c4a574]">
                 A recipient still needs to claim.{" "}
                 <button
                   type="button"
-                  className="text-amber-100 underline underline-offset-2"
+                  className="underline underline-offset-2"
                   onClick={() => {
                     const tok = obligations.find(
                       (o) =>
@@ -724,16 +794,11 @@ export default function App() {
 
         {tripEmpty ? (
           tripPanel
-        ) : hasNetted ? (
-          <>
-            {graphBlock}
-            {tripPanel}
-          </>
         ) : (
-          <div className="grid items-start gap-4 lg:grid-cols-2">
-            {graphBlock}
+          <>
             {tripPanel}
-          </div>
+            {!hasNetted && debtCount > 0 && graphBlock}
+          </>
         )}
 
         {(complianceRan || complianceFlags.length > 0) && (
@@ -748,7 +813,7 @@ export default function App() {
           >
             {complianceFlags.length === 0 ? (
               <div className="flex items-center gap-3 py-1">
-                <span className="bg-emerald-500/15 text-emerald-300 flex h-8 w-8 items-center justify-center rounded-full">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#9aaa8c]/15 text-[#9aaa8c]">
                   <IconCheckCircle className="h-4 w-4" />
                 </span>
                 <p className="text-slate-400 text-sm">
@@ -812,14 +877,10 @@ export default function App() {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`animate-fade-in-up shadow-glass pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium backdrop-blur-xl ${
-              t.kind === "warn"
-                ? "bg-orange-500/15 border-orange-500/30 text-orange-200"
-                : "bg-emerald-500/15 border-emerald-500/30 text-emerald-200"
-            }`}
+            className="animate-fade-in-up pointer-events-auto flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--elev)] px-4 py-2.5 text-sm font-medium text-[var(--text)]"
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${t.kind === "warn" ? "bg-orange-400" : "bg-emerald-400"}`}
+              className={`h-1.5 w-1.5 rounded-full ${t.kind === "warn" ? "bg-[#c4a574]" : "bg-[var(--text)]"}`}
             />
             {t.msg}
           </div>
@@ -868,11 +929,11 @@ function HeroIntro({
   onSample: () => void;
 }) {
   return (
-    <section className="glass animate-fade-in-up rounded-2xl p-5 sm:p-6">
-      <h1 className="text-slate-50 font-display text-xl font-bold tracking-tight">
+    <section className="glass animate-fade-in-up rounded-2xl p-6 sm:p-8">
+      <h1 className="text-slate-50 font-display text-[1.85rem] leading-[1.15] font-semibold sm:text-[2.15rem]">
         Start a trip
       </h1>
-      <p className="text-slate-400 mt-1.5 max-w-xl text-sm leading-relaxed">
+      <p className="text-slate-400 mt-2.5 max-w-lg text-[15px] leading-7">
         Add travelers and expenses. LiteFX nets debts into the fewest transfers
         and picks a rail for each one.
       </p>
@@ -941,7 +1002,7 @@ function ReductionStats({
         aria-expanded={open}
       >
         <div className="min-w-0 flex-1">
-          <p className="text-slate-100 text-sm font-semibold">
+          <p className="text-slate-100 font-display text-[1.05rem] font-semibold tracking-[-0.03em]">
             Netting saved {result.transfersSaved} transfer
             {result.transfersSaved === 1 ? "" : "s"}
           </p>
@@ -953,7 +1014,7 @@ function ReductionStats({
               : ""}
           </p>
         </div>
-        <span className="chip bg-emerald-500/15 border-emerald-500/25 text-emerald-300 shrink-0 border">
+        <span className="chip shrink-0 border border-[#9aaa8c]/25 bg-[#9aaa8c]/15 text-[#9aaa8c]">
           ↓ {result.reductionRatio}×
         </span>
         <IconChevron
@@ -964,36 +1025,30 @@ function ReductionStats({
         <div className="px-4 pb-4 sm:px-5">
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display text-slate-50 tnum text-2xl font-bold">
+              <p className="font-display text-slate-50 tnum text-[1.65rem] font-semibold">
                 {Math.round(saved)}
               </p>
-              <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
-                transfers saved
-              </p>
+              <p className="section-title mt-0.5">transfers saved</p>
             </div>
             <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display text-emerald-300 tnum text-2xl font-bold">
+              <p className="font-display tnum text-[1.65rem] font-semibold text-[#9aaa8c]">
                 ${fees.toFixed(2)}
               </p>
-              <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
-                est. fees saved
-              </p>
+              <p className="section-title mt-0.5">est. fees saved</p>
             </div>
             <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display text-cyan-300 tnum text-2xl font-bold">
+              <p className="font-display text-slate-200 tnum text-[1.65rem] font-semibold">
                 ${corridor.toFixed(2)}
               </p>
-              <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
-                vs Splitwise match
-              </p>
+              <p className="section-title mt-0.5">vs Splitwise match</p>
             </div>
             <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display brand-text tnum text-2xl font-bold">
+              <p className="font-display brand-text tnum text-[1.65rem] font-semibold">
                 ${moved.toFixed(2)}
               </p>
-              <p className="text-slate-500 mt-0.5 text-[10px] tracking-wide uppercase">
+              <p className="section-title mt-0.5">
                 to move{" "}
-                <span className="text-slate-600 whitespace-nowrap line-through">
+                <span className="text-slate-600 tracking-normal whitespace-nowrap normal-case line-through">
                   ${result.rawTotalUsd.toFixed(0)}
                 </span>
               </p>
@@ -1018,8 +1073,8 @@ function ReductionStats({
                   {result.rawEdgeCount}
                 </span>
               </div>
-              <div className="bg-white/[0.06] h-2 overflow-hidden rounded-full">
-                <div className="from-slate-500 to-slate-400 h-full w-full rounded-full bg-gradient-to-r" />
+              <div className="bg-white/[0.06] h-1.5 overflow-hidden rounded-sm">
+                <div className="bg-slate-500 h-full w-full" />
               </div>
             </div>
             <div>
@@ -1027,13 +1082,13 @@ function ReductionStats({
                 <span className="text-slate-500 text-xs">
                   With LiteFX · {result.netEdgeCount} payments
                 </span>
-                <span className="brand-text font-mono text-sm font-semibold">
+                <span className="text-slate-200 font-mono text-sm font-semibold">
                   {result.netEdgeCount}
                 </span>
               </div>
-              <div className="bg-white/[0.06] h-2 overflow-hidden rounded-full">
+              <div className="bg-white/[0.06] h-1.5 overflow-hidden rounded-sm">
                 <div
-                  className="brand-gradient h-full rounded-full transition-all duration-700"
+                  className="h-full bg-[var(--text)] transition-all duration-700"
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -1059,7 +1114,7 @@ function ReductionStats({
                       </p>
                       <p className="text-slate-500 text-[10px]">
                         {ent
-                          ? `${COUNTRY_FLAGS[ent.country] ?? ""} ${ent.country}`
+                          ? `${countryFlag(ent.country)} ${ent.country}`
                           : ""}
                       </p>
                       <p
@@ -1067,8 +1122,8 @@ function ReductionStats({
                           settled
                             ? "text-slate-400"
                             : isCreditor
-                              ? "text-emerald-400"
-                              : "text-red-400"
+                              ? "text-[#9aaa8c]"
+                              : "text-[#c48878]"
                         }`}
                       >
                         {isCreditor ? "+" : settled ? "" : "−"}$
@@ -1090,16 +1145,10 @@ function ReductionStats({
 }
 
 function RailLegend({ types }: { types: RailType[] }) {
-  const META: Record<string, { label: string; color: string }> = {
-    local: { label: "Local", color: "#34d399" },
-    linked: { label: "Linked", color: "#60a5fa" },
-    claim_link: { label: "Claim link", color: "#fbbf24" },
-    stable_bridge: { label: "Stable bridge", color: "#a78bfa" },
-  };
   return (
     <div className="flex flex-wrap justify-end gap-1.5">
       {types.map((t) => {
-        const meta = META[t];
+        const meta = RAIL_META[t];
         if (!meta) return null;
         return (
           <span
@@ -1108,7 +1157,7 @@ function RailLegend({ types }: { types: RailType[] }) {
           >
             <span
               className="h-1.5 w-1.5 rounded-full"
-              style={{ background: meta.color }}
+              style={{ background: meta.hex }}
             />
             {meta.label}
           </span>

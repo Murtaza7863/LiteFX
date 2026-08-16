@@ -14,28 +14,30 @@ export const SEED_ENTITIES: Entity[] = [
     name: "Alice Tan",
     country: "SG",
     contact: { type: "phone", value: "+65-9000-1111" },
-    linkedRailAliases: [{ railType: "paynow", alias: "+6590001111" }],
+    linkedRailAliases: [{ railType: "PayNow", alias: "+6590001111" }],
   },
   {
     id: "ent-bob",
     name: "Bob Sukhum",
     country: "TH",
     contact: { type: "phone", value: "+66-81-234-5678" },
-    linkedRailAliases: [{ railType: "promptpay", alias: "+66812345678" }],
+    linkedRailAliases: [{ railType: "PromptPay", alias: "+66812345678" }],
   },
   {
     id: "ent-charlie",
     name: "Charlie Reed",
     country: "US",
     contact: { type: "email", value: "charlie@email.com" },
-    linkedRailAliases: [{ railType: "zelle", alias: "charlie@email.com" }],
+    linkedRailAliases: [{ railType: "Zelle", alias: "charlie@email.com" }],
   },
   {
     id: "ent-diana",
     name: "Diana Weber",
     country: "DE",
     contact: { type: "email", value: "diana@email.de" },
-    linkedRailAliases: [{ railType: "sepa", alias: "DE89370400440532013000" }],
+    linkedRailAliases: [
+      { railType: "SEPA Instant", alias: "DE89370400440532013000" },
+    ],
   },
   {
     id: "ent-eve",
@@ -49,7 +51,7 @@ export const SEED_ENTITIES: Entity[] = [
     name: "Frank Chaem",
     country: "TH",
     contact: { type: "phone", value: "+66-81-555-0000" },
-    linkedRailAliases: [{ railType: "promptpay", alias: "+66815550000" }],
+    linkedRailAliases: [{ railType: "PromptPay", alias: "+66815550000" }],
   },
 ];
 

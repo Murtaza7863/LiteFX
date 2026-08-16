@@ -1,5 +1,6 @@
-import { Component } from "react";
 import type { ReactNode } from "react";
+
+import { Component } from "react";
 
 // ──────────────────────────────────────────────
 // Root error boundary: if anything throws while
@@ -19,19 +20,26 @@ export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, message: "" };
 
   static getDerivedStateFromError(err: unknown): State {
-    return { hasError: true, message: err instanceof Error ? err.message : String(err) };
+    return {
+      hasError: true,
+      message: err instanceof Error ? err.message : String(err),
+    };
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center p-6">
-          <div className="glass rounded-2xl p-8 max-w-md text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/15 border border-red-500/30 text-red-300">
+        <div className="flex min-h-screen items-center justify-center p-6">
+          <div className="glass max-w-md rounded-2xl p-8 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-[#c48878]/30 bg-[#c48878]/15 text-[#c48878]">
               !
             </div>
-            <h1 className="text-lg font-semibold text-slate-100 mb-2">Something went wrong</h1>
-            <p className="text-sm text-slate-400 mb-4">{this.state.message || "An unexpected error occurred."}</p>
+            <h1 className="font-display text-slate-100 mb-2 text-[1.45rem] font-semibold tracking-[-0.03em]">
+              Something went wrong
+            </h1>
+            <p className="text-slate-400 mb-4 text-sm">
+              {this.state.message || "An unexpected error occurred."}
+            </p>
             <button
               className="btn-primary w-full"
               onClick={() => {

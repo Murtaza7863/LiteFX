@@ -20,7 +20,7 @@ Open http://localhost:5173 in your browser.
 
 **GitHub Pages (same host as Plotline):** pushes to `main` publish the app at
 https://murtaza7863.github.io/LiteFX/ — the engine runs in the browser (trip
-data stays on that device). Open that URL, then **Continue as demo**.
+data stays on that device). The sample trip opens automatically.
 
 **Render / VPS:** LiteFX can also run as a **single web service** (API + built
 frontend) if you want a shared server-side store.

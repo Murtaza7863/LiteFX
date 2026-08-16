@@ -26,7 +26,6 @@ export default defineConfig({
     fs: { allow: [path.join(dir, "..")] },
     proxy: {
       "/api": "http://localhost:3001",
-      "/claim": "http://localhost:3001",
     },
   },
 });

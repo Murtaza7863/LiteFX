@@ -29,12 +29,12 @@ const STATUS_META: Record<
 > = {
   reconciled: {
     label: "Reconciled",
-    cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
+    cls: "bg-[#9aaa8c]/15 text-[#9aaa8c] border-[#9aaa8c]/25",
     icon: IconCheck,
   },
   mismatch: {
     label: "Mismatch",
-    cls: "bg-red-500/15 text-red-300 border-red-500/25",
+    cls: "bg-[#c48878]/15 text-[#c48878] border-[#c48878]/25",
     icon: IconAlertTriangle,
   },
   unmatched: {
@@ -91,10 +91,10 @@ export function ReconciliationView({
                     <td className="text-slate-400 px-4 py-3 text-right font-mono text-[13px]">
                       ${v.invoiceAmountUsd.toFixed(2)}
                     </td>
-                    <td className="text-emerald-400 px-4 py-3 text-right font-mono text-[13px]">
+                    <td className="px-4 py-3 text-right font-mono text-[13px] text-[#9aaa8c]">
                       ${v.settledUsd.toFixed(2)}
                     </td>
-                    <td className="text-amber-400 px-4 py-3 text-right font-mono text-[13px]">
+                    <td className="px-4 py-3 text-right font-mono text-[13px] text-[#c4a574]">
                       ${v.pendingUsd.toFixed(2)}
                     </td>
                   </tr>
@@ -165,8 +165,8 @@ export function ReconciliationView({
                 <span
                   className={`chip justify-self-end border ${
                     l.status === "claimed"
-                      ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-300"
-                      : "bg-cyan-500/15 border-cyan-500/25 text-cyan-300"
+                      ? "border-[#9aaa8c]/25 bg-[#9aaa8c]/15 text-[#9aaa8c]"
+                      : "bg-white/[0.06] border-white/[0.1] text-slate-300"
                   }`}
                 >
                   {l.status}

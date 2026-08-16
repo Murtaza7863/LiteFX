@@ -13,13 +13,14 @@ import {
   getClaimLink,
   findClaimOwner,
   runAsUser,
+  validateExpenseSplit,
   addUser,
   toPublicUser,
   deleteSessionByTokenHash,
 } from "./store";
 import { FX_TABLE } from "./types";
 import type { Expense } from "./types";
-import { countryByCode } from "./data/countries";
+import { canonicalizeRail, countryByCode } from "./data/countries";
 import { getFxSnapshot } from "./fx";
 import { runNetting } from "./agents/netting";
 import { runRouting, getRailTypesExercised } from "./agents/railRouter";
@@ -173,7 +174,14 @@ function parseExpenseFields(
   }
   const amount = body.amount ?? existing?.amount;
   const currency = body.currency ?? existing?.currency;
-  if (!(Number(amount) > 0) || !currency || !FX_TABLE[currency]) {
+  const amt = Number(amount);
+  if (
+    !Number.isFinite(amt) ||
+    amt <= 0 ||
+    amt > 1_000_000_000_000 ||
+    !currency ||
+    !FX_TABLE[currency]
+  ) {
     return {
       error: "A positive amount and supported currency are required.",
     };
@@ -186,31 +194,13 @@ function parseExpenseFields(
     Array.isArray(body.participantIds) && body.participantIds.length
       ? body.participantIds.filter((id) => known.has(id))
       : (existing?.participantIds ?? store.entities.map((e) => e.id));
-  if (!participants.includes(payerId))
-    participants = [...participants, payerId];
   participants = [...new Set(participants)];
   if (participants.length === 0) {
     return { error: "Select at least one participant." };
   }
   const split = body.split ?? existing?.split;
-  if (split?.mode === "percent") {
-    const assigned = Object.values(split.parts ?? {}).reduce(
-      (s, v) => s + Number(v || 0),
-      0,
-    );
-    if (assigned > 100.01) {
-      return { error: "Percent shares cannot exceed 100%." };
-    }
-  }
-  if (split?.mode === "amount") {
-    const assigned = Object.values(split.parts ?? {}).reduce(
-      (s, v) => s + Number(v || 0),
-      0,
-    );
-    if (assigned > Number(amount) + 0.01) {
-      return { error: "Assigned amounts cannot exceed the expense total." };
-    }
-  }
+  const splitError = validateExpenseSplit(split, amt);
+  if (splitError) return { error: splitError };
   const categoryRaw = (body.category ?? existing?.category ?? "general")
     .toLowerCase()
     .trim();
@@ -219,15 +209,16 @@ function parseExpenseFields(
   )
     ? categoryRaw
     : "general";
+  const description = (
+    (body.description ?? existing?.description ?? "").trim() || "Custom expense"
+  ).slice(0, 200);
   return {
     payerId,
     participantIds: participants,
-    amount: Number(amount),
+    amount: amt,
     currency,
     category,
-    description:
-      (body.description ?? existing?.description ?? "").trim() ||
-      "Custom expense",
+    description,
     split:
       split?.mode && split.mode !== "equal"
         ? { mode: split.mode, parts: split.parts ?? {} }
@@ -263,23 +254,37 @@ apiRouter.get("/scenario", (_req, res) => {
 
 // ── POST /api/entities — add a traveler ──
 apiRouter.post("/entities", (req, res) => {
-  const { name, country, contact, railType, alias } = req.body as {
+  const {
+    name: nameRaw,
+    country,
+    contact,
+    railType,
+    alias,
+  } = req.body as {
     name?: string;
     country?: string;
     contact?: { type: string; value: string };
     railType?: string;
     alias?: string;
   };
+  const name = (nameRaw ?? "").trim();
   if (!name || !country) {
     res
       .status(400)
       .json({ success: false, message: "name and country are required." });
     return;
   }
+  if (name.length > 80) {
+    res
+      .status(400)
+      .json({ success: false, message: "Name must be 1–80 characters." });
+    return;
+  }
   if (!countryByCode(country)) {
     res.status(400).json({ success: false, message: "Unsupported country." });
     return;
   }
+  const rail = canonicalizeRail(country, railType);
   const entity = {
     id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
     name,
@@ -288,7 +293,7 @@ apiRouter.post("/entities", (req, res) => {
       type: "email" | "phone";
       value: string;
     },
-    linkedRailAliases: railType ? [{ railType, alias: alias || "" }] : [],
+    linkedRailAliases: rail ? [{ railType: rail, alias: alias || "" }] : [],
   };
   addEntity(entity);
   res.json({ success: true, entity });
@@ -315,8 +320,10 @@ apiRouter.patch("/entities/:id", (req, res) => {
   const patch: Parameters<typeof updateEntity>[1] = {};
   if (name !== undefined) {
     const trimmed = name.trim();
-    if (!trimmed) {
-      res.status(400).json({ success: false, message: "name is required." });
+    if (!trimmed || trimmed.length > 80) {
+      res
+        .status(400)
+        .json({ success: false, message: "Name must be 1–80 characters." });
       return;
     }
     patch.name = trimmed;
@@ -329,11 +336,25 @@ apiRouter.patch("/entities/:id", (req, res) => {
     };
   }
   if (railType !== undefined) {
-    patch.linkedRailAliases = railType
+    const rail = canonicalizeRail(country ?? existing.country, railType);
+    patch.linkedRailAliases = rail
       ? [
           {
-            railType,
+            railType: rail,
             alias: alias || existing.linkedRailAliases[0]?.alias || "",
+          },
+        ]
+      : [];
+  } else if (country !== undefined && existing.linkedRailAliases[0]) {
+    const rail = canonicalizeRail(
+      country,
+      existing.linkedRailAliases[0].railType,
+    );
+    patch.linkedRailAliases = rail
+      ? [
+          {
+            railType: rail,
+            alias: existing.linkedRailAliases[0].alias,
           },
         ]
       : [];
@@ -383,7 +404,7 @@ apiRouter.delete("/expenses/:id", (req, res) => {
   res.json({ success: ok });
 });
 
-// ── DELETE /api/entities/:id — remove a traveler (and their expenses) ──
+// ── DELETE /api/entities/:id — remove a traveler (bills they paid, their share of others) ──
 apiRouter.delete("/entities/:id", (req, res) => {
   const ok = deleteEntity(req.params.id);
   res.json({ success: ok });

@@ -2,14 +2,8 @@ import { useMemo } from "react";
 
 import type { DebtEdge, Entity, NetObligation } from "../api/client";
 
-import { COUNTRY_FLAGS, initials } from "../lib/theme";
-
-// ──────────────────────────────────────────────
-// SVG debt graph. Render order: edges → nodes →
-// amount pills (pills on top so they never get
-// muddled by node labels). Curved glowing edges
-// with an animated "money flow" when netted.
-// ──────────────────────────────────────────────
+import { RAIL_META } from "../lib/theme";
+import { Avatar } from "./Avatar";
 
 interface Props {
   entities: Entity[];
@@ -19,48 +13,14 @@ interface Props {
   onOpenDetail?: (id: string) => void;
 }
 
-const RAIL_COLORS: Record<string, string> = {
-  local: "#34d399",
-  linked: "#60a5fa",
-  claim_link: "#fbbf24",
-  stable_bridge: "#a78bfa",
-};
-const RAW_COLOR = "#5b6b82";
-
-const GRADIENTS: [string, string][] = [
-  ["#22d3ee", "#3b82f6"],
-  ["#a855f7", "#6366f1"],
-  ["#34d399", "#10b981"],
-  ["#f59e0b", "#f97316"],
-  ["#f43f5e", "#ec4899"],
-  ["#8b5cf6", "#a855f7"],
-];
-
-function hash(str: string): number {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = (h << 5) - h + str.charCodeAt(i);
-    h |= 0;
-  }
-  return Math.abs(h);
-}
-
-const W = 680;
-const H = 540;
-const CX = W / 2;
-const CY = H / 2;
-const R = 175;
-const NODE_R = 28;
-
-interface Geom {
+interface Flow {
   id: string;
-  isNet: boolean;
-  rail?: string;
-  color: string;
-  d: string;
-  mx: number;
-  my: number;
+  from: string;
+  to: string;
+  amount: number;
+  currency: string;
   amountUsd: number;
+  rail?: string;
 }
 
 export function DebtGraph({
@@ -70,306 +30,143 @@ export function DebtGraph({
   mode,
   onOpenDetail,
 }: Props) {
-  const positions = useMemo(() => {
-    const map = new Map<string, { x: number; y: number }>();
-    const n = entities.length;
-    entities.forEach((e, i) => {
-      const angle = (2 * Math.PI * i) / n - Math.PI / 2;
-      map.set(e.id, {
-        x: CX + R * Math.cos(angle),
-        y: CY + R * Math.sin(angle),
-      });
-    });
-    return map;
-  }, [entities]);
+  const entityMap = useMemo(
+    () => new Map(entities.map((e) => [e.id, e])),
+    [entities],
+  );
 
-  const edges = mode === "raw" ? debtEdges : obligations;
+  const flows = useMemo<Flow[]>(() => {
+    const raw: Flow[] =
+      mode === "netted"
+        ? obligations.map((o) => ({
+            id: o.id,
+            from: o.from,
+            to: o.to,
+            amount: o.amount,
+            currency: o.settlementCurrency,
+            amountUsd: o.amountUsd,
+            rail: o.chosenRail,
+          }))
+        : debtEdges.map((e) => ({
+            id: e.id,
+            from: e.from,
+            to: e.to,
+            amount: e.amount,
+            currency: e.currency,
+            amountUsd: e.amountUsd,
+          }));
 
-  const edgeOffsets = useMemo(() => {
-    const pairCount = new Map<string, number>();
-    const offsets = new Map<string, number>();
-    for (const edge of edges) {
-      const key = [edge.from, edge.to].sort().join("|");
-      const idx = pairCount.get(key) ?? 0;
-      pairCount.set(key, idx + 1);
-      offsets.set(edge.id, idx);
+    if (mode === "netted") return raw;
+
+    const merged = new Map<string, Flow>();
+    for (const f of raw) {
+      const key = `${f.from}|${f.to}|${f.currency}`;
+      const prev = merged.get(key);
+      if (!prev) {
+        merged.set(key, { ...f });
+        continue;
+      }
+      prev.amount = Math.round((prev.amount + f.amount) * 100) / 100;
+      prev.amountUsd =
+        Math.round((prev.amountUsd + f.amountUsd) * 10000) / 10000;
     }
-    return offsets;
-  }, [edges]);
+    return [...merged.values()];
+  }, [mode, obligations, debtEdges]);
 
-  const geom = useMemo<Geom[]>(() => {
-    const isNet = mode === "netted";
-    return edges
-      .map((edge) => {
-        const a = positions.get(edge.from);
-        const b = positions.get(edge.to);
-        if (!a || !b) return null;
-        const rail = (edge as NetObligation).chosenRail;
-        const color = isNet ? RAIL_COLORS[rail ?? "stable_bridge"] : RAW_COLOR;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const px = -uy;
-        const py = ux;
-        const sx = a.x + ux * (NODE_R + 2);
-        const sy = a.y + uy * (NODE_R + 2);
-        const ex = b.x - ux * (NODE_R + 7);
-        const ey = b.y - uy * (NODE_R + 7);
-        const offsetIdx = edgeOffsets.get(edge.id) ?? 0;
-        const bend = (isNet ? 0.16 : 0.1) * len + offsetIdx * 16;
-        const cx = (sx + ex) / 2 + px * bend;
-        const cy = (sy + ey) / 2 + py * bend;
-        const d = `M ${sx} ${sy} Q ${cx} ${cy} ${ex} ${ey}`;
-        const mx = 0.25 * sx + 0.5 * cx + 0.25 * ex;
-        const my = 0.25 * sy + 0.5 * cy + 0.25 * ey;
-        return {
-          id: edge.id,
-          isNet,
-          rail,
-          color,
-          d,
-          mx,
-          my,
-          amountUsd: (edge as NetObligation).amountUsd ?? 0,
-        };
-      })
-      .filter(Boolean) as Geom[];
-  }, [edges, positions, edgeOffsets, mode]);
+  const groups = useMemo(() => {
+    const byFrom = new Map<string, Flow[]>();
+    for (const f of flows) {
+      const list = byFrom.get(f.from) ?? [];
+      list.push(f);
+      byFrom.set(f.from, list);
+    }
+    return [...byFrom.entries()]
+      .map(([from, items]) => ({
+        from,
+        items: items.sort((a, b) => b.amountUsd - a.amountUsd),
+        totalUsd: items.reduce((s, x) => s + x.amountUsd, 0),
+      }))
+      .sort((a, b) => b.totalUsd - a.totalUsd);
+  }, [flows]);
+
+  if (entities.length === 0 || flows.length === 0) {
+    return (
+      <p className="text-slate-500 py-2 text-sm">
+        {mode === "netted"
+          ? "No transfers yet — run netting first."
+          : "No debts yet."}
+      </p>
+    );
+  }
 
   return (
-    <div className="animate-fade-in bg-black/25 relative overflow-visible rounded-xl p-2">
-      {entities.length === 0 ? (
-        <div className="text-slate-500 flex h-[420px] items-center justify-center text-sm">
-          No entities loaded.
-        </div>
-      ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full select-none">
-          <defs>
-            {entities.map((e) => {
-              const [a, b] = GRADIENTS[hash(e.id) % GRADIENTS.length];
-              return (
-                <linearGradient
-                  key={e.id}
-                  id={`node-${e.id}`}
-                  x1="0"
-                  y1="0"
-                  x2="1"
-                  y2="1"
-                >
-                  <stop offset="0%" stopColor={a} />
-                  <stop offset="100%" stopColor={b} />
-                </linearGradient>
-              );
-            })}
-            <radialGradient id="node-sheen" cx="0.3" cy="0.25" r="0.9">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
-              <stop offset="45%" stopColor="rgba(255,255,255,0.05)" />
-              <stop offset="100%" stopColor="rgba(255,255,255,0)" />
-            </radialGradient>
-            <filter id="soft-glow" x="-60%" y="-60%" width="220%" height="220%">
-              <feGaussianBlur stdDeviation="4" result="b" />
-              <feMerge>
-                <feMergeNode in="b" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-            {Object.entries(RAIL_COLORS).map(([type, color]) => (
-              <marker
-                key={type}
-                id={`arrow-${type}`}
-                markerWidth="8"
-                markerHeight="8"
-                refX="6"
-                refY="4"
-                orient="auto"
-              >
-                <path d="M0,0 L8,4 L0,8 Z" fill={color} />
-              </marker>
-            ))}
-            <marker
-              id="arrow-raw"
-              markerWidth="8"
-              markerHeight="8"
-              refX="6"
-              refY="4"
-              orient="auto"
-            >
-              <path d="M0,0 L8,4 L0,8 Z" fill={RAW_COLOR} />
-            </marker>
-          </defs>
-
-          {/* Layer 1: edges */}
-          {geom.map((g) => (
-            <g
-              key={g.id}
-              onClick={
-                g.isNet && onOpenDetail ? () => onOpenDetail(g.id) : undefined
-              }
-              className={g.isNet && onOpenDetail ? "cursor-pointer" : undefined}
-            >
-              {g.isNet && onOpenDetail && (
-                <path
-                  d={g.d}
-                  fill="none"
-                  stroke="transparent"
-                  strokeWidth={14}
-                />
-              )}
-              <path
-                d={g.d}
-                fill="none"
-                stroke={g.color}
-                strokeWidth={g.isNet ? 5 : 3}
-                opacity={g.isNet ? 0.16 : 0.08}
-                filter="url(#soft-glow)"
-              />
-              <path
-                d={g.d}
-                fill="none"
-                stroke={g.color}
-                strokeWidth={g.isNet ? 2 : 1.1}
-                opacity={g.isNet ? 0.95 : 0.4}
-                markerEnd={`url(#${g.isNet ? `arrow-${g.rail ?? "stable_bridge"}` : "arrow-raw"})`}
-                className={g.isNet ? "edge-flow" : undefined}
-              />
-            </g>
-          ))}
-
-          {/* Layer 2: nodes */}
-          {entities.map((e) => {
-            const pos = positions.get(e.id)!;
-            const hasAccount = e.linkedRailAliases.length > 0;
-            const [ga, gb] = GRADIENTS[hash(e.id) % GRADIENTS.length];
-            // Place the name+country stack radially OUTWARD (as a unit) so
-            // interior edges/pills never cover it; country sits under the name.
-            const rdx = pos.x - CX;
-            const rdy = pos.y - CY;
-            const rlen = Math.hypot(rdx, rdy) || 1;
-            const rx = rdx / rlen;
-            const ry = rdy / rlen;
-            const nameX = pos.x + rx * (NODE_R + 16);
-            const nameY = pos.y + ry * (NODE_R + 16);
-            return (
-              <g key={e.id}>
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={NODE_R + 10}
-                  fill={ga}
-                  opacity="0.12"
-                  filter="url(#soft-glow)"
-                />
-                {!hasAccount && (
-                  <circle
-                    cx={pos.x}
-                    cy={pos.y}
-                    r={NODE_R + 5}
-                    fill="none"
-                    stroke="#fbbf24"
-                    strokeWidth="1.5"
-                    strokeDasharray="3 4"
-                    opacity="0.7"
-                  />
-                )}
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={NODE_R}
-                  fill={`url(#node-${e.id})`}
-                />
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={NODE_R}
-                  fill="url(#node-sheen)"
-                />
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={NODE_R}
-                  fill="none"
-                  stroke={gb}
-                  strokeOpacity="0.5"
-                  strokeWidth="1"
-                />
-                <text
-                  x={pos.x}
-                  y={pos.y + 1}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize="13"
-                  fontWeight="700"
-                  fill="#ffffff"
-                >
-                  {initials(e.name)}
-                </text>
-                <text
-                  x={nameX}
-                  y={nameY}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize="11"
-                  fontWeight="600"
-                  fill="#cbd5e1"
-                >
-                  {e.name.trim().split(" ")[0]}
-                </text>
-                <text
-                  x={nameX}
-                  y={nameY + 13}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize="10"
-                  fill="#64748b"
-                >
-                  {COUNTRY_FLAGS[e.country] ?? ""} {e.country}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Layer 3: amount pills on top */}
-          {geom
-            .filter((g) => g.isNet)
-            .map((g) => {
-              const label = `$${g.amountUsd.toFixed(0)}`;
-              const pw = Math.max(44, 14 + label.length * 7);
-              return (
-                <g key={`label-${g.id}`}>
-                  <rect
-                    x={g.mx - pw / 2}
-                    y={g.my - 10}
-                    width={pw}
-                    height={18}
-                    rx={9}
-                    fill="var(--graph-pill)"
-                    stroke={g.color}
-                    strokeOpacity="0.4"
-                  />
-                  <text
-                    x={g.mx}
-                    y={g.my + 3}
-                    textAnchor="middle"
-                    fontSize="10"
-                    fontWeight="600"
-                    fill={g.color}
-                    fontFamily="JetBrains Mono, monospace"
-                  >
-                    {label}
-                  </text>
-                </g>
-              );
-            })}
-        </svg>
-      )}
-
-      {mode === "netted" && obligations.length === 0 && (
-        <div className="text-slate-500 absolute inset-0 flex items-center justify-center text-sm">
-          Run netting to collapse the graph.
-        </div>
-      )}
+    <div className="divide-white/[0.06] divide-y">
+      {groups.map((g) => {
+        const debtor = entityMap.get(g.from);
+        if (!debtor) return null;
+        return (
+          <div key={g.from} className="py-2.5 first:pt-0 last:pb-0">
+            <div className="mb-1.5 flex items-center gap-2">
+              <Avatar id={debtor.id} name={debtor.name} size={22} />
+              <p className="text-slate-300 truncate text-[13px] font-medium">
+                {debtor.name.trim()}
+                <span className="text-slate-500 font-normal"> owes</span>
+              </p>
+            </div>
+            <ul className="space-y-0.5 pl-7">
+              {g.items.map((f) => {
+                const creditor = entityMap.get(f.to);
+                if (!creditor) return null;
+                const meta = f.rail ? RAIL_META[f.rail] : null;
+                const inner = (
+                  <>
+                    <span className="text-slate-600 text-[11px]">→</span>
+                    <Avatar id={creditor.id} name={creditor.name} size={18} />
+                    <span className="text-slate-400 min-w-0 flex-1 truncate text-[13px]">
+                      {creditor.name.trim()}
+                    </span>
+                    <span className="text-slate-200 tnum shrink-0 font-mono text-[13px]">
+                      {f.amount.toLocaleString(undefined, {
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      <span className="text-slate-500">{f.currency}</span>
+                    </span>
+                    {f.currency !== "USD" && (
+                      <span className="text-slate-600 tnum hidden shrink-0 font-mono text-[11px] sm:inline">
+                        ≈ ${f.amountUsd.toFixed(0)}
+                      </span>
+                    )}
+                    {meta && (
+                      <span
+                        className={`chip hidden shrink-0 border !px-1.5 !py-0 !text-[10px] sm:inline-flex ${meta.soft} ${meta.text}`}
+                      >
+                        {meta.label}
+                      </span>
+                    )}
+                  </>
+                );
+                const rowCls =
+                  "flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left";
+                return (
+                  <li key={f.id}>
+                    {mode === "netted" && onOpenDetail ? (
+                      <button
+                        type="button"
+                        onClick={() => onOpenDetail(f.id)}
+                        className={`${rowCls} hover:bg-white/[0.04] transition-colors`}
+                      >
+                        {inner}
+                      </button>
+                    ) : (
+                      <div className={rowCls}>{inner}</div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
     </div>
   );
 }

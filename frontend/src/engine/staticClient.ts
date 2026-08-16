@@ -11,7 +11,10 @@ import type {
 } from "../api/client";
 
 import { FX_TABLE } from "../../../backend/src/types";
-import { countryByCode } from "../../../backend/src/data/countries";
+import {
+  canonicalizeRail,
+  countryByCode,
+} from "../../../backend/src/data/countries";
 import { getFxSnapshot, refreshFx } from "../../../backend/src/fx";
 import { runNetting } from "../../../backend/src/agents/netting";
 import {
@@ -35,6 +38,7 @@ import {
   deleteExpense,
   findClaimOwner,
   findUserByEmail,
+  findUserById,
   getClaimLink,
   getStore,
   initStore,
@@ -44,6 +48,7 @@ import {
   updateClaimLink,
   updateEntity,
   updateExpense,
+  validateExpenseSplit,
   type UserRecord,
 } from "../../../backend/src/store";
 
@@ -63,8 +68,13 @@ let booted = false;
 async function boot(): Promise<void> {
   if (booted) return;
   booted = true;
-  initStore();
-  await refreshFx();
+  try {
+    initStore();
+  } catch {
+    /* private mode / blocked storage */
+  }
+  // Never block first paint on a live FX fetch — static table is enough.
+  void refreshFx();
 }
 
 function sessionUser(): User | null {
@@ -166,7 +176,14 @@ function parseExpenseFields(
   }
   const amount = body.amount ?? existing?.amount;
   const currency = body.currency ?? existing?.currency;
-  if (!(Number(amount) > 0) || !currency || FX_TABLE[currency] == null) {
+  const amt = Number(amount);
+  if (
+    !Number.isFinite(amt) ||
+    amt <= 0 ||
+    amt > 1_000_000_000_000 ||
+    !currency ||
+    FX_TABLE[currency] == null
+  ) {
     throw new Error("A positive amount and supported currency are required.");
   }
   if (Array.isArray(body.participantIds) && body.participantIds.length === 0) {
@@ -177,31 +194,13 @@ function parseExpenseFields(
     Array.isArray(body.participantIds) && body.participantIds.length
       ? body.participantIds.filter((id) => known.has(id))
       : (existing?.participantIds ?? store.entities.map((e) => e.id));
-  if (!participants.includes(payerId))
-    participants = [...participants, payerId];
   participants = [...new Set(participants)];
   if (participants.length === 0) {
     throw new Error("Select at least one participant.");
   }
   const split = body.split ?? existing?.split;
-  if (split?.mode === "percent") {
-    const assigned = Object.values(split.parts ?? {}).reduce(
-      (s, v) => s + Number(v || 0),
-      0,
-    );
-    if (assigned > 100.01) {
-      throw new Error("Percent shares cannot exceed 100%.");
-    }
-  }
-  if (split?.mode === "amount") {
-    const assigned = Object.values(split.parts ?? {}).reduce(
-      (s, v) => s + Number(v || 0),
-      0,
-    );
-    if (assigned > Number(amount) + 0.01) {
-      throw new Error("Assigned amounts cannot exceed the expense total.");
-    }
-  }
+  const splitError = validateExpenseSplit(split, amt);
+  if (splitError) throw new Error(splitError);
   const categoryRaw = (body.category ?? existing?.category ?? "general")
     .toLowerCase()
     .trim();
@@ -210,15 +209,16 @@ function parseExpenseFields(
   )
     ? categoryRaw
     : "general";
+  const description = (
+    (body.description ?? existing?.description ?? "").trim() || "Custom expense"
+  ).slice(0, 200);
   return {
     payerId,
     participantIds: participants,
-    amount: Number(amount),
+    amount: amt,
     currency,
     category,
-    description:
-      (body.description ?? existing?.description ?? "").trim() ||
-      "Custom expense",
+    description,
     split:
       split?.mode && split.mode !== "equal"
         ? { mode: split.mode, parts: split.parts ?? {} }
@@ -327,19 +327,24 @@ export const staticClient = {
   }) => {
     await boot();
     return asUser(() => {
-      if (!body.name || !body.country) {
+      const name = (body.name ?? "").trim();
+      if (!name || !body.country) {
         throw new Error("name and country are required.");
+      }
+      if (name.length > 80) {
+        throw new Error("Name must be 1–80 characters.");
       }
       if (!countryByCode(body.country)) {
         throw new Error("Unsupported country.");
       }
+      const rail = canonicalizeRail(body.country, body.railType);
       const entity: Entity = {
         id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
-        name: body.name,
+        name,
         country: body.country,
         contact: body.contact ?? { type: "email" as const, value: "" },
-        linkedRailAliases: body.railType
-          ? [{ railType: body.railType, alias: body.alias || "" }]
+        linkedRailAliases: rail
+          ? [{ railType: rail, alias: body.alias || "" }]
           : [],
       };
       addEntity(entity as Parameters<typeof addEntity>[0]);
@@ -379,7 +384,9 @@ export const staticClient = {
       const patch: Parameters<typeof updateEntity>[1] = {};
       if (body.name !== undefined) {
         const trimmed = body.name.trim();
-        if (!trimmed) throw new Error("name is required.");
+        if (!trimmed || trimmed.length > 80) {
+          throw new Error("Name must be 1–80 characters.");
+        }
         patch.name = trimmed;
       }
       if (body.country !== undefined) patch.country = body.country;
@@ -390,11 +397,28 @@ export const staticClient = {
         };
       }
       if (body.railType !== undefined) {
-        patch.linkedRailAliases = body.railType
+        const rail = canonicalizeRail(
+          body.country ?? existing.country,
+          body.railType,
+        );
+        patch.linkedRailAliases = rail
           ? [
               {
-                railType: body.railType,
+                railType: rail,
                 alias: body.alias || existing.linkedRailAliases[0]?.alias || "",
+              },
+            ]
+          : [];
+      } else if (body.country !== undefined && existing.linkedRailAliases[0]) {
+        const rail = canonicalizeRail(
+          body.country,
+          existing.linkedRailAliases[0].railType,
+        );
+        patch.linkedRailAliases = rail
+          ? [
+              {
+                railType: rail,
+                alias: existing.linkedRailAliases[0].alias,
               },
             ]
           : [];
@@ -425,16 +449,28 @@ export const staticClient = {
   },
   me: async (): Promise<User | null> => {
     await boot();
-    return sessionUser();
+    const user = sessionUser();
+    if (!user) return null;
+    if (!findUserById(user.id)) {
+      setSession(null);
+      return null;
+    }
+    return user;
   },
   signup: async (body: { name: string; email: string; password: string }) => {
     await boot();
     const name = body.name.trim();
     const email = body.email.trim().toLowerCase();
-    if (name.length < 2) throw new Error("Name is required.");
+    if (name.length < 1 || name.length > 80) {
+      throw new Error("Name must be 1–80 characters.");
+    }
     if (!email.includes("@")) throw new Error("Enter a valid email.");
-    if ((body.password ?? "").length < 8) {
-      throw new Error("Password must be at least 8 characters.");
+    if (
+      (body.password ?? "").length < 10 ||
+      !/[A-Za-z]/.test(body.password) ||
+      !/\d/.test(body.password)
+    ) {
+      throw new Error("Use 10–200 characters with a letter and a number.");
     }
     if (findUserByEmail(email)) {
       throw new Error("An account with this email already exists.");

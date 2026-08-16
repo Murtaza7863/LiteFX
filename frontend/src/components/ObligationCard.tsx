@@ -1,6 +1,6 @@
 import type { Entity, NetObligation } from "../api/client";
 
-import { COUNTRY_FLAGS, RAIL_META } from "../lib/theme";
+import { countryFlag, RAIL_META } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { RailIcon, IconAlertTriangle } from "./icons";
 
@@ -15,11 +15,11 @@ const STATUS_META: Record<string, { label: string; cls: string }> = {
   },
   routed: {
     label: "Routed",
-    cls: "bg-cyan-500/15 text-cyan-300 border-cyan-500/25",
+    cls: "bg-white/[0.06] text-slate-200 border-white/[0.1]",
   },
   settled: {
     label: "Settled",
-    cls: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
+    cls: "bg-[#9aaa8c]/15 text-[#9aaa8c] border-[#9aaa8c]/25",
   },
 };
 
@@ -50,7 +50,7 @@ export function ObligationCard({
     obligation.status === "routed"
       ? {
           label: "Awaiting claim",
-          cls: "bg-amber-500/15 text-amber-300 border-amber-500/25",
+          cls: "bg-[#c4a574]/15 text-[#c4a574] border-[#c4a574]/25",
         }
       : (STATUS_META[obligation.status] ?? STATUS_META.pending);
 
@@ -70,9 +70,9 @@ export function ObligationCard({
               {toEntity.name.trim().split(" ")[0]}
             </p>
             <p className="text-slate-500 text-[11px] leading-tight">
-              {COUNTRY_FLAGS[fromEntity.country]} {fromEntity.country}
+              {countryFlag(fromEntity.country)} {fromEntity.country}
               <span className="mx-0.5">·</span>
-              {COUNTRY_FLAGS[toEntity.country]} {toEntity.country}
+              {countryFlag(toEntity.country)} {toEntity.country}
             </p>
           </div>
         </div>
@@ -83,11 +83,11 @@ export function ObligationCard({
 
       <div className="mb-2.5 flex items-end justify-between gap-2">
         <div>
-          <p className="text-slate-50 font-mono text-xl font-bold tracking-tight">
+          <p className="text-slate-50 font-display tnum text-[1.45rem] font-semibold tracking-[-0.03em]">
             {obligation.amount.toLocaleString(undefined, {
               maximumFractionDigits: 2,
             })}
-            <span className="text-slate-400 ml-1 text-sm font-semibold">
+            <span className="text-slate-400 ml-1.5 font-sans text-sm font-medium tracking-normal">
               {obligation.settlementCurrency}
             </span>
           </p>
@@ -112,7 +112,7 @@ export function ObligationCard({
           {obligation.complianceFlags.map((f, i) => (
             <span
               key={i}
-              className="chip bg-red-500/10 border-red-500/25 text-red-300 border"
+              className="chip border border-[#c48878]/25 bg-[#c48878]/10 text-[#c48878]"
               title={f.message}
             >
               <IconAlertTriangle className="h-3 w-3" />{" "}
@@ -137,13 +137,13 @@ export function ObligationCard({
         {obligation.claimToken && (
           <button
             onClick={() => onOpenClaim(obligation.claimToken!)}
-            className="btn-primary !from-amber-500 !to-orange-500 w-full !bg-gradient-to-r"
+            className="btn-primary w-full"
           >
             Open claim link →
           </button>
         )}
         {obligation.status === "settled" && !obligation.claimToken && (
-          <div className="text-emerald-400 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium">
+          <div className="flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-[#9aaa8c]">
             <CheckCircleIcon className="h-4 w-4" /> Settled
           </div>
         )}
@@ -157,7 +157,7 @@ export function ObligationCard({
       {obligation.considered && obligation.considered.length > 0 && (
         <button
           onClick={() => onOpenDetail(obligation.id)}
-          className="text-slate-500 hover:text-cyan-300 mt-2 w-full text-center text-[11px] font-medium transition-colors"
+          className="text-slate-500 hover:text-slate-200 mt-2 w-full text-center text-[11px] font-medium transition-colors"
         >
           View routing decision →
         </button>

@@ -25,7 +25,9 @@ export function Collapsible({
         aria-expanded={open}
       >
         <div className="min-w-0 flex-1">
-          <p className="text-slate-100 text-sm font-semibold">{title}</p>
+          <p className="text-slate-100 font-display text-[1.05rem] font-semibold tracking-[-0.03em]">
+            {title}
+          </p>
           {sub && (
             <p className="text-slate-500 mt-0.5 truncate text-xs">{sub}</p>
           )}

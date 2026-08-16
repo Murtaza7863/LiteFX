@@ -74,6 +74,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
   const handleClaim = () => {
     if (!selectedPayout) return;
     setClaiming(true);
+    setError(null);
     client
       .claimWithPayout(token, selectedPayout)
       .then((res) => {
@@ -92,16 +93,13 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
 
   return (
     <div
-      className="bg-black/70 animate-fade-in fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      className="animate-fade-in bg-black/60 fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="glass-strong shadow-glass animate-scale-in relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl p-6"
+        className="glass-strong animate-scale-in relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Gradient accent bar */}
-        <div className="from-amber-400 via-orange-400 to-rose-400 absolute inset-x-0 top-0 h-1 rounded-t-3xl bg-gradient-to-r" />
-
         <button
           onClick={onClose}
           className="text-slate-500 hover:text-slate-200 hover:bg-white/[0.06] absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-full transition-colors"
@@ -117,8 +115,8 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
         )}
 
         {error && (
-          <div className="bg-red-500/10 border-red-500/25 mt-2 mb-4 rounded-xl border p-3">
-            <p className="text-red-300 text-sm">{error}</p>
+          <div className="mt-2 mb-4 rounded-xl border border-[#c48878]/25 bg-[#c48878]/10 p-3">
+            <p className="text-sm text-[#c48878]">{error}</p>
           </div>
         )}
 
@@ -127,7 +125,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
             {/* Header */}
             <div className="mt-2 mb-5">
               <div className="mb-2 flex items-center gap-2">
-                <span className="chip bg-amber-500/15 border-amber-500/30 text-amber-300 border">
+                <span className="chip border border-[#c4a574]/30 bg-[#c4a574]/10 text-[#c4a574]">
                   <IconTicket className="h-3.5 w-3.5" /> Claim Link
                 </span>
                 <span
@@ -135,8 +133,8 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                     details.link.status === "pending"
                       ? "bg-slate-500/15 text-slate-400 border-slate-500/20"
                       : details.link.status === "claimed"
-                        ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/25"
-                        : "bg-red-500/15 text-red-300 border-red-500/25"
+                        ? "border-[#9aaa8c]/25 bg-[#9aaa8c]/15 text-[#9aaa8c]"
+                        : "border-[#c48878]/25 bg-[#c48878]/15 text-[#c48878]"
                   }`}
                 >
                   {details.link.status}
@@ -163,14 +161,14 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
 
             {/* Amount */}
             <div className="bg-black/30 border-white/[0.05] mb-5 rounded-2xl border p-5 text-center">
-              <p className="text-slate-500 mb-1 text-xs tracking-wider uppercase">
+              <p className="text-slate-500 section-title mb-1">
                 Amount due to you
               </p>
-              <p className="brand-text font-mono text-4xl font-bold tracking-tight">
+              <p className="brand-text font-display tnum text-[2.6rem] leading-none font-semibold tracking-[-0.03em]">
                 {details.obligation.amount.toLocaleString(undefined, {
                   maximumFractionDigits: 2,
                 })}
-                <span className="ml-1.5 text-xl">
+                <span className="ml-2 font-sans text-lg font-medium tracking-normal text-[var(--muted)]">
                   {details.obligation.settlementCurrency}
                 </span>
               </p>
@@ -190,10 +188,13 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                   type="button"
                   onClick={() => {
                     const url = claimUrl(token);
-                    void navigator.clipboard.writeText(url).then(() => {
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 1600);
-                    });
+                    void navigator.clipboard.writeText(url).then(
+                      () => {
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1600);
+                      },
+                      () => setCopied(false),
+                    );
                   }}
                   className="text-slate-400 hover:text-slate-200 text-[11px] font-medium"
                 >
@@ -203,7 +204,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                   href={claimUrl(token)}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-cyan-400 text-[11px] font-medium whitespace-nowrap hover:underline"
+                  className="link-plain text-[11px] font-medium whitespace-nowrap"
                 >
                   Open ↗
                 </a>
@@ -215,11 +216,9 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
               !claimed && <ClaimSendRow details={details} token={token} />}
 
             {claimed ? (
-              <div className="bg-emerald-500/10 border-emerald-500/25 animate-scale-in rounded-2xl border p-5 text-center">
-                <IconCheckCircle className="text-emerald-300 mx-auto mb-2 h-8 w-8" />
-                <p className="text-emerald-300 text-lg font-semibold">
-                  Claimed!
-                </p>
+              <div className="animate-scale-in rounded-xl border border-[var(--border)] p-5 text-center">
+                <IconCheckCircle className="mx-auto mb-2 h-8 w-8 text-[#9aaa8c]" />
+                <p className="text-lg font-semibold text-[#9aaa8c]">Claimed!</p>
                 <p className="text-slate-400 mt-1 text-sm">
                   Payout via{" "}
                   <span className="text-slate-200">
@@ -229,17 +228,15 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                 </p>
               </div>
             ) : details.link.status === "claimed" ? (
-              <div className="bg-emerald-500/10 border-emerald-500/25 rounded-2xl border p-5 text-center">
-                <p className="text-emerald-300 font-semibold">
-                  Already claimed
-                </p>
+              <div className="rounded-xl border border-[var(--border)] p-5 text-center">
+                <p className="font-semibold text-[#9aaa8c]">Already claimed</p>
                 <p className="text-slate-400 mt-1 text-sm">
                   Payout method: {details.link.payoutMethod}
                 </p>
               </div>
             ) : details.link.status === "expired" ? (
-              <div className="bg-red-500/10 border-red-500/25 rounded-2xl border p-5 text-center">
-                <p className="text-red-300 font-semibold">Link expired</p>
+              <div className="rounded-xl border border-[#c48878]/25 bg-[#c48878]/10 p-5 text-center">
+                <p className="font-semibold text-[#c48878]">Link expired</p>
                 <p className="text-slate-400 mt-1 text-sm">
                   This claim link is no longer valid. Ask the sender to re-issue
                   it.
@@ -259,7 +256,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                         key={opt}
                         className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all duration-150 ${
                           selectedPayout === opt
-                            ? "border-amber-400/60 bg-amber-400/10 shadow-glow-cyan"
+                            ? "border-[var(--text)]/35 bg-[var(--text)]/5"
                             : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/[0.12]"
                         }`}
                       >
@@ -275,7 +272,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                           value={opt}
                           checked={selectedPayout === opt}
                           onChange={() => setSelectedPayout(opt)}
-                          className="accent-amber-400 h-4 w-4"
+                          className="h-4 w-4"
                         />
                       </label>
                     );
@@ -285,7 +282,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                 <button
                   onClick={handleClaim}
                   disabled={!selectedPayout || claiming}
-                  className="btn-primary !from-amber-500 !to-orange-500 w-full !bg-gradient-to-r"
+                  className="btn-primary w-full"
                 >
                   {claiming ? "Claiming…" : "Claim payment"}
                 </button>

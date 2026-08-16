@@ -4,22 +4,17 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
-        display: ["Space Grotesk", "Inter", "sans-serif"],
+        sans: ["Outfit", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
+        display: ["Fraunces", "ui-serif", "Georgia", "serif"],
       },
       colors: {
         rail: {
-          local: "#10b981",
-          linked: "#3b82f6",
-          claim_link: "#f59e0b",
-          stable_bridge: "#a855f7",
+          local: "#9aaa8c",
+          linked: "#8a9aab",
+          claim_link: "#c4a574",
+          stable_bridge: "#a898a4",
         },
-      },
-      boxShadow: {
-        glass: "0 8px 32px 0 rgba(0, 0, 0, 0.37)",
-        "glow-cyan": "0 0 24px rgba(34, 211, 238, 0.15)",
-        "glow-violet": "0 0 24px rgba(139, 92, 246, 0.15)",
       },
       keyframes: {
         fadeInUp: {
@@ -31,23 +26,14 @@ export default {
           "100%": { opacity: "1" },
         },
         scaleIn: {
-          "0%": { opacity: "0", transform: "scale(0.96)" },
+          "0%": { opacity: "0", transform: "scale(0.98)" },
           "100%": { opacity: "1", transform: "scale(1)" },
-        },
-        pulseGlow: {
-          "0%, 100%": { opacity: "1" },
-          "50%": { opacity: "0.5" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
         },
       },
       animation: {
-        "fade-in-up": "fadeInUp 0.5s ease-out both",
-        "fade-in": "fadeIn 0.4s ease-out both",
-        "scale-in": "scaleIn 0.3s ease-out both",
-        "pulse-glow": "pulseGlow 2s ease-in-out infinite",
+        "fade-in-up": "fadeInUp 0.35s ease-out both",
+        "fade-in": "fadeIn 0.3s ease-out both",
+        "scale-in": "scaleIn 0.2s ease-out both",
       },
     },
   },

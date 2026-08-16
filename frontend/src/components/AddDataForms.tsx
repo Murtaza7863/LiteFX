@@ -4,17 +4,25 @@ import type { Entity, Expense } from "../api/client";
 
 import { client } from "../api/client";
 import {
-  COUNTRIES,
   CURRENCY_OPTIONS,
   EXPENSE_CATEGORIES,
-  flagFromCode,
   railsFor,
   primaryRail,
   currencyFor,
 } from "../lib/countries";
+import { CountrySelect } from "./CountrySelect";
 import { IconPlus, IconDownload, IconMore } from "./icons";
 
 const inputCls = "input-field";
+
+function railForCountry(country: string, stored?: string): string {
+  const rails = railsFor(country);
+  if (stored) {
+    const match = rails.find((r) => r.toLowerCase() === stored.toLowerCase());
+    if (match) return match;
+  }
+  return rails[0] ?? primaryRail(country);
+}
 
 interface Props {
   entities: Entity[];
@@ -102,7 +110,7 @@ export function AddDataForms({
   const [tCountry, setTCountry] = useState("SG");
   const [tContact, setTContact] = useState("");
   const [tHasAccount, setTHasAccount] = useState(true);
-  const [tRail, setTRail] = useState(primaryRail("SG"));
+  const [tRail, setTRail] = useState(railForCountry("SG"));
 
   const [eDesc, setEDesc] = useState("");
   const [eAmount, setEAmount] = useState("");
@@ -126,8 +134,10 @@ export function AddDataForms({
     setTContact(editEntity.contact.value ?? "");
     setTHasAccount(editEntity.linkedRailAliases.length > 0);
     setTRail(
-      editEntity.linkedRailAliases[0]?.railType ||
-        primaryRail(editEntity.country),
+      railForCountry(
+        editEntity.country,
+        editEntity.linkedRailAliases[0]?.railType,
+      ),
     );
     setFormError(null);
     rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -157,6 +167,18 @@ export function AddDataForms({
     setFormError(null);
     rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [editExpense, entities]);
+
+  useEffect(() => {
+    if (ePayer && !entities.some((e) => e.id === ePayer)) setEPayer("");
+  }, [entities, ePayer]);
+
+  useEffect(() => {
+    const known = new Set(entities.map((e) => e.id));
+    setEParticipants((ids) => {
+      const next = ids.filter((id) => known.has(id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [entities]);
 
   useEffect(() => {
     if (editExpense || !ePayer) return;
@@ -199,7 +221,7 @@ export function AddDataForms({
         await client.updateEntity(editEntity.id, {
           name,
           country: tCountry,
-          railType: tHasAccount ? tRail : null,
+          railType: tHasAccount ? railForCountry(tCountry, tRail) : null,
           contact,
         });
         resetTravelerForm();
@@ -209,7 +231,7 @@ export function AddDataForms({
         await client.addEntity({
           name,
           country: tCountry,
-          railType: tHasAccount ? tRail : undefined,
+          railType: tHasAccount ? railForCountry(tCountry, tRail) : undefined,
           contact: contact.value ? contact : undefined,
         });
         resetTravelerForm();
@@ -225,7 +247,13 @@ export function AddDataForms({
 
   const submitExpense = async () => {
     const amt = parseFloat(eAmount);
-    if (!ePayer || !(amt > 0)) return;
+    if (
+      !ePayer ||
+      !Number.isFinite(amt) ||
+      !(amt > 0) ||
+      amt > 1_000_000_000_000
+    )
+      return;
     setBusy(true);
     setFormError(null);
     try {
@@ -278,7 +306,9 @@ export function AddDataForms({
     <div ref={rootRef} className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-slate-100 text-base font-semibold">Trip</h2>
+          <h2 className="font-display text-slate-100 text-[1.25rem] font-semibold tracking-[-0.03em]">
+            Trip
+          </h2>
           <p className="text-slate-500 mt-0.5 text-xs">
             {entities.length} traveler{entities.length === 1 ? "" : "s"} ·{" "}
             {expenseCount} expense{expenseCount === 1 ? "" : "s"}
@@ -326,7 +356,7 @@ export function AddDataForms({
                     setMenuOpen(false);
                     onClear();
                   }}
-                  className="hover:bg-white/[0.05] text-red-300 block w-full px-3 py-2 text-left text-sm"
+                  className="hover:bg-white/[0.05] block w-full px-3 py-2 text-left text-sm text-[#c48878]"
                 >
                   Clear all
                 </button>
@@ -373,12 +403,12 @@ export function AddDataForms({
         </div>
       </div>
 
-      {formError && <p className="text-red-300 text-xs">{formError}</p>}
+      {formError && <p className="text-xs text-[#c48878]">{formError}</p>}
 
       {open === "traveler" && (
         <div className="bg-white/[0.03] border-white/[0.06] animate-fade-in grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
           {editEntity && (
-            <p className="text-cyan-300/90 text-[11px] sm:col-span-2">
+            <p className="text-slate-400 text-[11px] sm:col-span-2">
               Editing {editEntity.name.trim()}
             </p>
           )}
@@ -388,20 +418,13 @@ export function AddDataForms({
             value={tName}
             onChange={(e) => setTName(e.target.value)}
           />
-          <select
-            className={inputCls}
+          <CountrySelect
             value={tCountry}
-            onChange={(e) => {
-              setTCountry(e.target.value);
-              setTRail(primaryRail(e.target.value));
+            onChange={(code) => {
+              setTCountry(code);
+              setTRail(railForCountry(code));
             }}
-          >
-            {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code} className="bg-slate-900">
-                {flagFromCode(c.code)} {c.name} ({c.code})
-              </option>
-            ))}
-          </select>
+          />
           <input
             className={`${inputCls} sm:col-span-2`}
             placeholder="Phone or email (for claim links)"
@@ -413,14 +436,13 @@ export function AddDataForms({
               type="checkbox"
               checked={tHasAccount}
               onChange={(e) => setTHasAccount(e.target.checked)}
-              className="accent-cyan-400"
             />
             Has a linked account
           </label>
           {tHasAccount ? (
             <select
               className={inputCls}
-              value={tRail}
+              value={railForCountry(tCountry, tRail)}
               onChange={(e) => setTRail(e.target.value)}
             >
               {railsFor(tCountry).map((r) => (
@@ -457,7 +479,7 @@ export function AddDataForms({
       {open === "expense" && (
         <div className="bg-white/[0.03] border-white/[0.06] animate-fade-in grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
           {editExpense && (
-            <p className="text-cyan-300/90 text-[11px] sm:col-span-2">
+            <p className="text-slate-400 text-[11px] sm:col-span-2">
               Editing expense
             </p>
           )}
@@ -518,7 +540,6 @@ export function AddDataForms({
               type="checkbox"
               checked={eAll}
               onChange={(e) => setEAll(e.target.checked)}
-              className="accent-cyan-400"
             />
             Split among everyone
           </label>
@@ -537,7 +558,7 @@ export function AddDataForms({
                     }
                     className={`chip border transition-colors ${
                       on
-                        ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-200"
+                        ? "border-transparent bg-[var(--text)] text-[var(--bg)]"
                         : "bg-white/[0.03] border-white/[0.08] text-slate-400"
                     }`}
                   >
@@ -545,6 +566,9 @@ export function AddDataForms({
                   </button>
                 );
               })}
+              <p className="text-slate-500 w-full text-[11px]">
+                Leave yourself off if you covered their share.
+              </p>
             </div>
           )}
 
@@ -611,6 +635,7 @@ export function AddDataForms({
               disabled={
                 busy ||
                 !ePayer ||
+                !Number.isFinite(parseFloat(eAmount)) ||
                 !(parseFloat(eAmount) > 0) ||
                 (!eAll && eParticipants.length === 0)
               }

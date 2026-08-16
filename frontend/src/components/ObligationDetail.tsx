@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 import type { DebtEdge, Entity, NetObligation } from "../api/client";
 
-import { RAIL_META, COUNTRY_FLAGS } from "../lib/theme";
+import { RAIL_META, countryFlag } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { RailIcon, IconX } from "./icons";
 
@@ -47,11 +47,11 @@ export function ObligationDetail({
 
   return (
     <div
-      className="bg-black/70 animate-fade-in fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+      className="animate-fade-in bg-black/60 fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="glass-strong animate-scale-in relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl p-6"
+        className="glass-strong animate-scale-in relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -72,8 +72,8 @@ export function ObligationDetail({
               {fromEntity.name.trim()} → {toEntity.name.trim()}
             </p>
             <p className="text-slate-500 text-[11px]">
-              {COUNTRY_FLAGS[fromEntity.country]} {fromEntity.country} →{" "}
-              {COUNTRY_FLAGS[toEntity.country]} {toEntity.country}
+              {countryFlag(fromEntity.country)} {fromEntity.country} →{" "}
+              {countryFlag(toEntity.country)} {toEntity.country}
               {meta ? ` · ${meta.label}` : ""}
             </p>
           </div>
@@ -93,7 +93,7 @@ export function ObligationDetail({
             <p className="text-slate-500 text-[10px] tracking-wide uppercase">
               Est. fee
             </p>
-            <p className="text-amber-300 font-mono text-sm font-semibold">
+            <p className="font-mono text-sm font-semibold text-[#c4a574]">
               ${(obligation.feeUsd ?? 0).toFixed(2)}
             </p>
           </div>
@@ -133,7 +133,7 @@ export function ObligationDetail({
                     key={i}
                     className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
                       c.chosen
-                        ? "border-cyan-400/40 bg-cyan-400/10"
+                        ? "border-[var(--text)]/25 bg-[var(--text)]/5"
                         : "border-white/[0.06] bg-white/[0.02] opacity-70"
                     }`}
                   >
@@ -142,11 +142,11 @@ export function ObligationDetail({
                     </span>
                     <div className="min-w-0 flex-1">
                       <p
-                        className={`text-xs font-semibold ${c.chosen ? "text-cyan-200" : "text-slate-300"}`}
+                        className={`text-xs font-semibold ${c.chosen ? "text-slate-100" : "text-slate-300"}`}
                       >
                         {c.railName}
                         {c.chosen && (
-                          <span className="text-cyan-300 ml-1.5 text-[9px] tracking-wide uppercase">
+                          <span className="text-slate-500 ml-1.5 text-[9px] tracking-wide uppercase">
                             chosen
                           </span>
                         )}

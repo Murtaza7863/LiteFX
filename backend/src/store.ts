@@ -95,15 +95,17 @@ function deriveDebtEdges(expenses: Expense[]): DebtEdge[] {
     for (const pid of exp.participantIds) {
       if (pid === exp.payerId) continue;
       const owed = shares[pid] ?? 0;
-      if (owed <= 0) continue;
+      if (!Number.isFinite(owed) || owed <= 0) continue;
       const currency = exp.currency;
+      const amount = Math.round(owed * 100) / 100;
+      if (!Number.isFinite(amount) || amount <= 0) continue;
       edges.push({
         id: `debt-${++counter}`,
         from: pid,
         to: exp.payerId,
-        amount: Math.round(owed * 100) / 100,
+        amount,
         currency,
-        amountUsd: toUsd(owed, currency),
+        amountUsd: toUsd(amount, currency),
         sourceExpenseId: exp.id,
       });
     }
@@ -114,7 +116,6 @@ function deriveDebtEdges(expenses: Expense[]): DebtEdge[] {
 // The portion of the bill each participant is responsible for.
 // Supports equal, percentage, and exact-amount splits (Splitwise baseline).
 function computeShares(exp: Expense): Record<string, number> {
-  const n = exp.participantIds.length || 1;
   const mode = exp.split?.mode ?? "equal";
   const parts = exp.split?.parts ?? {};
   const shares: Record<string, number> = {};
@@ -142,9 +143,46 @@ function computeShares(exp: Expense): Record<string, number> {
     if (remainder > 0)
       shares[exp.payerId] = (shares[exp.payerId] ?? 0) + remainder;
   } else {
-    for (const pid of exp.participantIds) shares[pid] = exp.amount / n;
+    const ids = exp.participantIds;
+    const count = ids.length || 1;
+    const cents = Math.round(exp.amount * 100);
+    const base = Math.floor(cents / count);
+    const extra = cents - base * count;
+    const remainderTo = ids.includes(exp.payerId)
+      ? exp.payerId
+      : ids[count - 1];
+    for (const pid of ids) {
+      shares[pid] = (base + (pid === remainderTo ? extra : 0)) / 100;
+    }
   }
   return shares;
+}
+
+/** Reject split payloads that would produce NaN / overflowing shares. */
+export function validateExpenseSplit(
+  split: { mode?: string; parts?: Record<string, number> } | undefined,
+  amount: number,
+): string | null {
+  if (!split || split.mode === "equal") return null;
+  if (split.mode !== "percent" && split.mode !== "amount") {
+    return "Split mode must be equal, percent, or amount.";
+  }
+  const parts = split.parts ?? {};
+  let assigned = 0;
+  for (const v of Object.values(parts)) {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) {
+      return "Split shares must be finite numbers ≥ 0.";
+    }
+    assigned += n;
+  }
+  if (split.mode === "percent" && assigned > 100.01) {
+    return "Percent shares cannot exceed 100%.";
+  }
+  if (split.mode === "amount" && assigned > amount + 0.01) {
+    return "Assigned amounts cannot exceed the expense total.";
+  }
+  return null;
 }
 
 function freshState(): StoreState {
@@ -590,9 +628,18 @@ export function deleteEntity(id: string): boolean {
   const before = st.entities.length;
   st.entities = st.entities.filter((e) => e.id !== id);
   if (st.entities.length === before) return false;
-  st.expenses = st.expenses.filter(
-    (e) => e.payerId !== id && !e.participantIds.includes(id),
-  );
+  const kept: Expense[] = [];
+  for (const e of st.expenses) {
+    if (e.payerId === id) continue;
+    const participantIds = e.participantIds.filter((p) => p !== id);
+    if (participantIds.length === 0) continue;
+    kept.push(
+      participantIds.length === e.participantIds.length
+        ? e
+        : { ...e, participantIds },
+    );
+  }
+  st.expenses = kept;
   st.debtEdges = deriveDebtEdges(st.expenses);
   invalidateDerived();
   save();

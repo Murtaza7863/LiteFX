@@ -18,6 +18,51 @@ afterEach(() => {
   clearStore();
 });
 
+test("equal split remainder goes to the payer so shares still sum", () => {
+  loadTrip(
+    [
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+      traveler("c", "C", "US", "zelle"),
+    ],
+    [
+      expense({
+        id: "e1",
+        payerId: "a",
+        participantIds: ["a", "b", "c"],
+        amount: 10,
+      }),
+    ],
+  );
+  const edges = getStore().debtEdges;
+  assert.equal(edges.length, 2);
+  const total = edges.reduce((s, e) => s + e.amount, 0);
+  assert.equal(total, 6.66);
+  assert.deepEqual(edges.map((e) => `${e.from}->${e.to}:${e.amount}`).sort(), [
+    "b->a:3.33",
+    "c->a:3.33",
+  ]);
+});
+
+test("equal split of two cents among three leaves the extra on the payer", () => {
+  loadTrip(
+    [
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+      traveler("c", "C", "US", "zelle"),
+    ],
+    [
+      expense({
+        id: "e1",
+        payerId: "a",
+        participantIds: ["a", "b", "c"],
+        amount: 0.02,
+      }),
+    ],
+  );
+  assert.equal(getStore().debtEdges.length, 0);
+});
+
 test("equal split creates IOUs from everyone except the payer", () => {
   loadTrip(
     [
@@ -99,6 +144,30 @@ test("payer-only expense creates no debt edges", () => {
   assert.equal(getStore().debtEdges.length, 0);
 });
 
+test("splitting among others only does not pull the payer into the share", () => {
+  loadTrip(
+    [
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+      traveler("c", "C", "US", "zelle"),
+    ],
+    [
+      expense({
+        id: "e1",
+        payerId: "a",
+        participantIds: ["b", "c"],
+        amount: 80,
+      }),
+    ],
+  );
+  assert.deepEqual(
+    getStore()
+      .debtEdges.map((e) => `${e.from}->${e.to}:${e.amountUsd}`)
+      .sort(),
+    ["b->a:40", "c->a:40"],
+  );
+});
+
 test("deleting an expense recomputes debts", () => {
   loadTrip(
     [traveler("a", "A", "US", "zelle"), traveler("b", "B", "US", "zelle")],
@@ -116,7 +185,33 @@ test("deleting an expense recomputes debts", () => {
   assert.equal(deleteExpense("e1"), false);
 });
 
-test("deleting a traveler drops their expenses and IOUs", () => {
+test("deleting a non-payer traveler removes them from splits, not the bill", () => {
+  loadTrip(
+    [
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+      traveler("c", "C", "US", "zelle"),
+    ],
+    [
+      expense({
+        id: "e1",
+        payerId: "a",
+        participantIds: ["a", "b", "c"],
+        amount: 90,
+      }),
+    ],
+  );
+  assert.equal(deleteEntity("b"), true);
+  assert.equal(getStore().entities.length, 2);
+  assert.equal(getStore().expenses.length, 1);
+  assert.deepEqual(getStore().expenses[0].participantIds, ["a", "c"]);
+  assert.deepEqual(
+    getStore().debtEdges.map((e) => `${e.from}->${e.to}:${e.amount}`),
+    ["c->a:45"],
+  );
+});
+
+test("deleting a payer drops expenses they paid", () => {
   loadTrip(
     [traveler("a", "A", "US", "zelle"), traveler("b", "B", "US", "zelle")],
     [
@@ -128,7 +223,7 @@ test("deleting a traveler drops their expenses and IOUs", () => {
       }),
     ],
   );
-  assert.equal(deleteEntity("b"), true);
+  assert.equal(deleteEntity("a"), true);
   assert.equal(getStore().entities.length, 1);
   assert.equal(getStore().expenses.length, 0);
   assert.equal(getStore().debtEdges.length, 0);

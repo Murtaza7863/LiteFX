@@ -1,7 +1,7 @@
-import { avatarGradient, initials } from "../lib/theme";
+import { avatarFill, initials } from "../lib/theme";
 
 // ──────────────────────────────────────────────
-// Entity avatar — a gradient circle with initials.
+// Entity avatar — solid muted fill with initials.
 // Deterministic color per entity id.
 // ──────────────────────────────────────────────
 
@@ -15,11 +15,11 @@ interface Props {
 export function Avatar({ id, name, size = 36, className = "" }: Props) {
   return (
     <div
-      className={`flex items-center justify-center rounded-full text-white font-semibold shadow-glass shrink-0 ${className}`}
+      className={`font-display flex shrink-0 items-center justify-center rounded-full font-semibold text-[#eee8df] ${className}`}
       style={{
         width: size,
         height: size,
-        background: avatarGradient(id),
+        background: avatarFill(id),
         fontSize: size * 0.36,
       }}
       aria-label={name}

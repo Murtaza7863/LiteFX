@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { FxSnapshot } from "../api/client";
 
+import { formatUsdPerUnit } from "../../../backend/src/fx";
 import { IconGlobe } from "./icons";
 
 export function FxBar({ fx }: { fx?: FxSnapshot }) {
@@ -62,19 +63,20 @@ function FxPopover({
         <IconGlobe className="h-4 w-4" />
       </button>
       {open && (
-        <div className="glass-strong animate-scale-in absolute right-0 z-50 mt-2 w-56 rounded-xl p-3 shadow-lg">
+        <div className="glass-strong animate-scale-in absolute right-0 z-50 mt-2 w-64 rounded-xl p-3">
           <p className="text-slate-500 mb-2 text-[10px] tracking-wide uppercase">
             {live ? "Live FX" : "FX"}
             {asOf ? ` · ${asOf}` : ""}
+            <span className="font-normal"> · 1 unit in USD</span>
           </p>
-          <ul className="space-y-1">
+          <ul className="max-h-72 space-y-1 overflow-y-auto pr-1">
             {pairs.map(([code, usd]) => (
               <li
                 key={code}
                 className="text-slate-300 flex justify-between font-mono text-[12px]"
               >
                 <span>1 {code}</span>
-                <span>${usd.toFixed(usd >= 0.1 ? 2 : 4)}</span>
+                <span>${formatUsdPerUnit(usd)}</span>
               </li>
             ))}
           </ul>

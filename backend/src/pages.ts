@@ -43,36 +43,38 @@ function shell(title: string, body: string): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>LiteFX — ${esc(title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,500&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root { color-scheme: dark; }
-  * { box-sizing: border-box; margin: 0; font-family: Inter, system-ui, sans-serif; }
+  * { box-sizing: border-box; margin: 0; font-family: Outfit, system-ui, sans-serif; }
   body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
-    background: #070b14 radial-gradient(ellipse 60% 40% at 30% 0%, rgba(34,211,238,.14), transparent),
-                #070b14; color: #e2e8f0; }
-  .card { width: 100%; max-width: 420px; border: 1px solid rgba(255,255,255,.08); border-radius: 20px;
-    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 20px 50px -20px rgba(0,0,0,.6); padding: 28px; }
-  .brand { display:flex; align-items:center; gap:8px; font-weight:700; margin-bottom:18px; }
-  .logo { width:28px; height:28px; border-radius:8px; background:linear-gradient(135deg,#22d3ee,#8b5cf6); }
-  .grad { background:linear-gradient(90deg,#67e8f9,#a5b4fc); -webkit-background-clip:text; background-clip:text; color:transparent; }
-  h1 { font-size: 22px; margin: 6px 0 4px; }
-  .muted { color: #94a3b8; font-size: 14px; line-height: 1.5; }
-  .amount { text-align:center; background:rgba(0,0,0,.3); border:1px solid rgba(255,255,255,.05); border-radius:14px; padding:18px; margin:18px 0; }
-  .amount .big { font-size:30px; font-weight:700; }
-  label.opt { display:flex; align-items:center; gap:10px; border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:12px; margin-bottom:8px; cursor:pointer; }
-  label.opt:hover { background: rgba(255,255,255,.04); }
-  button { width:100%; border:0; border-radius:12px; padding:13px; font-size:15px; font-weight:600; color:#fff; cursor:pointer;
-    background: linear-gradient(90deg,#f59e0b,#f97316); box-shadow:0 8px 20px -8px rgba(245,158,11,.5); }
+    background: #171513; color: #eee8df; }
+  .card { width: 100%; max-width: 420px; border: 1px solid rgba(238,232,223,.12); border-radius: 12px;
+    background: #1e1b18; padding: 28px; }
+  .brand { display:flex; align-items:center; gap:8px; font-family: Fraunces, Georgia, serif; font-weight:600; letter-spacing:-0.03em; margin-bottom:18px; }
+  .logo { width:28px; height:28px; border-radius:8px; background:#2a2622; }
+  .fx { font-style:italic; font-weight:500; }
+  h1 { font-family: Fraunces, Georgia, serif; font-size: 26px; margin: 6px 0 4px; letter-spacing:-0.03em; font-weight:600; }
+  .muted { color: #8a8378; font-size: 14px; line-height: 1.6; }
+  .amount { text-align:center; border:1px solid rgba(238,232,223,.12); border-radius:12px; padding:18px; margin:18px 0; }
+  .amount .big { font-family: Fraunces, Georgia, serif; font-size:32px; font-weight:600; letter-spacing:-0.03em; }
+  label.opt { display:flex; align-items:center; gap:10px; border:1px solid rgba(238,232,223,.12); border-radius:8px; padding:12px; margin-bottom:8px; cursor:pointer; }
+  label.opt:hover { background: rgba(238,232,223,.04); }
+  button { width:100%; border:0; border-radius:8px; padding:13px; font-size:15px; font-weight:600; color:#171513; cursor:pointer; background:#eee8df; }
   button:disabled { opacity:.4; cursor:not-allowed; }
-  .ok { text-align:center; color:#6ee7b7; font-weight:600; padding:12px; }
+  .ok { text-align:center; font-weight:600; padding:12px; }
   @media (prefers-color-scheme: light) {
     :root { color-scheme: light; }
-    body { background: #f3f6fb radial-gradient(ellipse 60% 40% at 30% 0%, rgba(8,145,178,.12), transparent), #f3f6fb; color: #0f172a; }
-    .card { border-color: rgba(15,23,42,.1); background: #fff; box-shadow: 0 18px 40px -24px rgba(15,23,42,.25); }
-    .muted { color: #64748b; }
-    .amount { background: #f8fafc; border-color: rgba(15,23,42,.08); }
-    label.opt { border-color: rgba(15,23,42,.1); }
-    label.opt:hover { background: #f8fafc; }
+    body { background: #f2eee6; color: #1c1917; }
+    .card { border-color: rgba(28,25,23,.12); background: #faf7f1; }
+    .muted { color: #6b645a; }
+    .logo { background:#1c1917; }
+    .amount { border-color: rgba(28,25,23,.12); }
+    label.opt { border-color: rgba(28,25,23,.12); }
+    label.opt:hover { background: #f2eee6; }
+    button { background:#1c1917; color:#f2eee6; }
   }
 </style>
 </head>
@@ -82,7 +84,7 @@ function shell(title: string, body: string): string {
 
 function claimPage(token: string): string {
   const body = `
-    <div class="brand"><span class="logo"></span> Lite<span class="grad">FX</span></div>
+    <div class="brand"><span class="logo"></span> Lite<span class="fx">FX</span></div>
     <h1>You've been paid</h1>
     <p class="muted">Someone settled a travel debt to you via LiteFX. Choose how to receive it — no account needed.</p>
     <div id="root"><p class="muted">Loading…</p></div>
@@ -99,7 +101,7 @@ function claimPage(token: string): string {
           '<div class="amount"><div class="big">'+(ob.amount||0).toLocaleString()+' '+(ob.settlementCurrency||'')+'</div>' +
           '<div class="muted">≈ $'+(ob.amountUsd||0).toFixed(2)+' USD</div></div>' +
           (d.link.status === 'claimed' ? '<div class="ok">Already claimed ✓</div>'
-           : d.link.status === 'expired' ? '<div class="ok" style="color:#fca5a5">This link has expired.</div>'
+           : d.link.status === 'expired' ? '<div class="ok" style="color:#c48878">This link has expired.</div>'
            : opts + '<button id="go" disabled>Claim payment</button>');
         const go = document.getElementById('go');
         if (go) {
@@ -113,7 +115,7 @@ function claimPage(token: string): string {
               .then(r => r.json()).then(r => {
                 root.innerHTML = r.success
                   ? '<div class="ok">Claimed! Payout via “'+esc(method)+'” is queued.</div>'
-                  : '<div class="ok" style="color:#fca5a5">'+esc(r.message||'Failed')+'</div>';
+                  : '<div class="ok" style="color:#c48878">'+esc(r.message||'Failed')+'</div>';
               });
           });
         }

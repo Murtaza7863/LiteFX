@@ -336,7 +336,7 @@ export const httpClient = {
   logout: () => api<{ success: boolean }>("/auth/logout", "POST"),
 };
 
-export const client =
-  import.meta.env.VITE_STATIC === "1" || import.meta.env.BASE_URL !== "/"
-    ? staticClient
-    : httpClient;
+export const isStaticEngine =
+  import.meta.env.VITE_STATIC === "1" || import.meta.env.BASE_URL !== "/";
+
+export const client = isStaticEngine ? staticClient : httpClient;
