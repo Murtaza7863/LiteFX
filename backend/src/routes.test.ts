@@ -488,14 +488,55 @@ test("GET /health is public", async () => {
   assert.equal(body.service, "litefx");
 });
 
-test("POST /engine/run rejects an empty trip and a second run", async () => {
+test("POST /engine/run rejects an empty trip and a second run rebuilds", async () => {
   const empty = await json("/engine/run", { method: "POST" });
   assert.equal(empty.status, 400);
   asUser(() => seedStore());
   const first = await json("/engine/run", { method: "POST" });
   assert.equal(first.status, 200);
   const second = await json("/engine/run", { method: "POST" });
-  assert.equal(second.status, 409);
+  assert.equal(second.status, 200);
+  assert.ok(second.body.netEdgeCount > 0);
+});
+
+test("PATCH Bob's country after netting rebuilds his corridor off local PromptPay", async () => {
+  asUser(() => seedStore());
+  await json("/engine/run", { method: "POST" });
+  const before = await json("/scenario");
+  const bobFrank = before.body.netObligations.find(
+    (o: { from: string; to: string }) =>
+      o.from === "ent-bob" && o.to === "ent-frank",
+  );
+  assert.equal(bobFrank.chosenRail, "local");
+  const patched = await json("/entities/ent-bob", {
+    method: "PATCH",
+    body: JSON.stringify({ country: "JP", railType: "Zengin" }),
+  });
+  assert.equal(patched.status, 200, patched.body.message);
+  assert.equal(patched.body.entity.country, "JP");
+  const after = await json("/scenario");
+  assert.ok(after.body.netObligations.length > 0);
+  const bob = after.body.entities.find(
+    (e: { id: string }) => e.id === "ent-bob",
+  );
+  assert.equal(bob.country, "JP");
+  for (const o of after.body.netObligations as {
+    from: string;
+    to: string;
+    chosenRail?: string;
+  }[]) {
+    if (o.from !== "ent-bob" && o.to !== "ent-bob") continue;
+    if (o.chosenRail !== "local") continue;
+    const otherId = o.from === "ent-bob" ? o.to : o.from;
+    const other = after.body.entities.find(
+      (e: { id: string }) => e.id === otherId,
+    );
+    assert.equal(
+      other.country,
+      "JP",
+      `Bob (JP) still on local with ${other.country}`,
+    );
+  }
 });
 
 test("failed settle and claim use error status codes", async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { COUNTRIES } from "../lib/countries";
+import { countryToCommit, filterCountries } from "../lib/countryQuery";
 import { countryFlag } from "../lib/theme";
 
 interface Props {
@@ -16,24 +17,39 @@ export function CountrySelect({ value, onChange, className = "" }: Props) {
   const [active, setActive] = useState(0);
   const root = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const queryRef = useRef(query);
+  const matchesRef = useRef<typeof COUNTRIES>(COUNTRIES);
+  const activeRef = useRef(0);
+  const onChangeRef = useRef(onChange);
+  queryRef.current = query;
+  activeRef.current = active;
+  onChangeRef.current = onChange;
 
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return COUNTRIES;
-    return COUNTRIES.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.code.toLowerCase().includes(q) ||
-        c.currency.toLowerCase().includes(q),
+  const matches = useMemo(() => filterCountries(query), [query]);
+  matchesRef.current = matches;
+
+  const pick = (code: string) => {
+    onChange(code);
+    setOpen(false);
+    setQuery("");
+  };
+
+  const commitOpenQuery = () => {
+    const code = countryToCommit(
+      queryRef.current,
+      matchesRef.current,
+      activeRef.current,
     );
-  }, [query]);
+    if (code) onChangeRef.current(code);
+    setOpen(false);
+    setQuery("");
+  };
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
       if (root.current && !root.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery("");
+        commitOpenQuery();
       }
     };
     document.addEventListener("mousedown", onDoc);
@@ -65,12 +81,6 @@ export function CountrySelect({ value, onChange, className = "" }: Props) {
     }
   }, [active, open, matches]);
 
-  const pick = (code: string) => {
-    onChange(code);
-    setOpen(false);
-    setQuery("");
-  };
-
   const display = selected
     ? `${countryFlag(selected.code)} ${selected.name}`
     : "Country";
@@ -95,8 +105,7 @@ export function CountrySelect({ value, onChange, className = "" }: Props) {
           onBlur={() => {
             requestAnimationFrame(() => {
               if (!root.current?.contains(document.activeElement)) {
-                setOpen(false);
-                setQuery("");
+                commitOpenQuery();
               }
             });
           }}

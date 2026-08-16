@@ -24,6 +24,7 @@ import {
   getRailTypesExercised,
   linkRecipientAccount,
   overrideRail,
+  rebuildSettlement,
   rerouteUnsettled,
   runRouting,
 } from "../../../backend/src/agents/railRouter";
@@ -255,9 +256,6 @@ function assertCanNet(): void {
   if (store.debtEdges.length === 0) {
     throw new Error("Add a shared expense before running the engine.");
   }
-  if (store.netObligations.length > 0) {
-    throw new Error("This trip is already netted.");
-  }
 }
 
 export const staticClient = {
@@ -432,6 +430,8 @@ export const staticClient = {
         patch.name = trimmed;
       }
       if (body.country !== undefined) patch.country = body.country;
+      const countryChanged =
+        body.country !== undefined && body.country !== existing.country;
       const nextName = patch.name ?? existing.name;
       const nextCountry = patch.country ?? existing.country;
       if (travelerOnTrip(nextName, nextCountry, existing.id)) {
@@ -449,10 +449,14 @@ export const staticClient = {
       if (rails.linkedRailAliases) {
         patch.linkedRailAliases = rails.linkedRailAliases;
       }
+      const hadNets = getStore().netObligations.length > 0;
       const updated = updateEntity(id, patch);
       if (!updated) throw new Error("Traveler not found.");
       const entity = rememberTraveler(updated);
-      if (
+      if (countryChanged && hadNets) {
+        rebuildSettlement();
+      } else if (
+        !countryChanged &&
         patch.linkedRailAliases &&
         getStore().netObligations.some((o) => o.status !== "settled")
       ) {

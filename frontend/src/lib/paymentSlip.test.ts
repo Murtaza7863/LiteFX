@@ -66,43 +66,75 @@ test("payment slips name the rail, alias, and claim path", () => {
 });
 
 test("impossible local/linked corridors never instruct a foreign domestic rail", () => {
-  for (const c of COUNTRIES) {
-    const sender: Entity = {
-      id: "ent-bob",
-      name: "Bob Sukhum",
-      country: c.code,
-      contact: { type: "phone", value: "+1000" },
-      linkedRailAliases: [{ railType: primaryRail(c.code), alias: "bob" }],
-    };
-    const local = paymentSlip(
-      obligation({ chosenRail: "local", from: sender.id, to: alice.id }),
-      sender,
-      alice,
-    );
-    const linked = paymentSlip(
-      obligation({ chosenRail: "linked", from: sender.id, to: alice.id }),
-      sender,
-      alice,
-    );
-    const localName = sharedLocalRail(c.code, "SG");
-    const linkedName = LINKED_CORRIDORS[linkedKey(c.code, "SG")];
-    if (localName) {
-      assert.match(
-        local.text,
-        new RegExp(localName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+  for (const from of COUNTRIES) {
+    for (const to of COUNTRIES) {
+      const sender: Entity = {
+        id: "ent-from",
+        name: "From",
+        country: from.code,
+        contact: { type: "phone", value: "+1000" },
+        linkedRailAliases: [
+          { railType: primaryRail(from.code), alias: "from" },
+        ],
+      };
+      const recipient: Entity = {
+        id: "ent-to",
+        name: "To",
+        country: to.code,
+        contact: { type: "phone", value: "+2000" },
+        linkedRailAliases: [{ railType: primaryRail(to.code), alias: "to" }],
+      };
+      const base = obligation({
+        from: sender.id,
+        to: recipient.id,
+      });
+      const local = paymentSlip(
+        { ...base, chosenRail: "local" },
+        sender,
+        recipient,
       );
-    } else {
-      assert.match(local.text, /USDC/i, c.code);
-      assert.doesNotMatch(local.text, /via PayNow/i, c.code);
-    }
-    if (linkedName) {
-      assert.match(
-        linked.text,
-        new RegExp(linkedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      const linked = paymentSlip(
+        { ...base, chosenRail: "linked" },
+        sender,
+        recipient,
       );
-    } else {
-      assert.match(linked.text, /USDC/i, c.code);
-      assert.doesNotMatch(linked.text, /via PayNow/i, c.code);
+      const usdc = paymentSlip(
+        { ...base, chosenRail: "stable_bridge" },
+        sender,
+        recipient,
+      );
+      const claim = paymentSlip(
+        {
+          ...base,
+          chosenRail: "claim_link",
+        },
+        sender,
+        { ...recipient, linkedRailAliases: [] },
+      );
+      const localName = sharedLocalRail(from.code, to.code);
+      const linkedName = LINKED_CORRIDORS[linkedKey(from.code, to.code)];
+      if (localName) {
+        assert.match(
+          local.text,
+          new RegExp(localName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+          `${from.code}→${to.code} local`,
+        );
+      } else {
+        assert.match(local.text, /USDC/i, `${from.code}→${to.code} local`);
+      }
+      if (linkedName) {
+        assert.match(
+          linked.text,
+          new RegExp(linkedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+          `${from.code}→${to.code} linked`,
+        );
+      } else {
+        assert.match(linked.text, /USDC/i, `${from.code}→${to.code} linked`);
+      }
+      assert.match(usdc.text, /USDC/i, `${from.code}→${to.code}`);
+      assert.match(claim.text, /claim link/i, `${from.code}→${to.code}`);
+      assert.match(claim.text, new RegExp(`\\(${from.code}\\)`));
+      assert.match(claim.text, new RegExp(`\\(${to.code}\\)`));
     }
   }
 });

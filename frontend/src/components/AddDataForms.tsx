@@ -7,25 +7,16 @@ import {
   CURRENCY_OPTIONS,
   EXPENSE_CATEGORIES,
   railsFor,
-  primaryRail,
   currencyFor,
   classifyExpense,
 } from "../lib/countries";
+import { railForCountry } from "../lib/railPick";
 import { formatUsd, previewShares, toUsd } from "../lib/tripMath";
 import { CountrySelect } from "./CountrySelect";
 import { IconPlus, IconDownload, IconMore } from "./icons";
 import { SavedPeople } from "./SavedPeople";
 
 const inputCls = "input-field";
-
-function railForCountry(country: string, stored?: string): string {
-  const rails = railsFor(country);
-  if (stored) {
-    const match = rails.find((r) => r.toLowerCase() === stored.toLowerCase());
-    if (match) return match;
-  }
-  return rails[0] ?? primaryRail(country);
-}
 
 interface Props {
   tripName?: string;
@@ -133,6 +124,7 @@ export function AddDataForms({
 
   const [tName, setTName] = useState("");
   const [tCountry, setTCountry] = useState("SG");
+  const tCountryRef = useRef("SG");
   const [tContact, setTContact] = useState("");
   const [tHasAccount, setTHasAccount] = useState(true);
   const [tRail, setTRail] = useState(railForCountry("SG"));
@@ -157,6 +149,7 @@ export function AddDataForms({
     setOpen("traveler");
     setTName(editEntity.name);
     setTCountry(editEntity.country);
+    tCountryRef.current = editEntity.country;
     setTContact(editEntity.contact.value ?? "");
     setTHasAccount(editEntity.linkedRailAliases.length > 0);
     setTRail(
@@ -253,6 +246,7 @@ export function AddDataForms({
     setFormError(null);
     try {
       const name = tName.trim();
+      const country = tCountryRef.current;
       const contact = tContact.trim()
         ? tContact.includes("@")
           ? { type: "email" as const, value: tContact.trim() }
@@ -261,8 +255,8 @@ export function AddDataForms({
       if (editEntity) {
         await client.updateEntity(editEntity.id, {
           name,
-          country: tCountry,
-          railType: tHasAccount ? railForCountry(tCountry, tRail) : null,
+          country,
+          railType: tHasAccount ? railForCountry(country, tRail) : null,
           contact,
         });
         resetTravelerForm();
@@ -271,8 +265,8 @@ export function AddDataForms({
       } else {
         await client.addEntity({
           name,
-          country: tCountry,
-          railType: tHasAccount ? railForCountry(tCountry, tRail) : undefined,
+          country,
+          railType: tHasAccount ? railForCountry(country, tRail) : undefined,
           contact: contact.value ? contact : undefined,
         });
         resetTravelerForm();
@@ -573,6 +567,7 @@ export function AddDataForms({
           <CountrySelect
             value={tCountry}
             onChange={(code) => {
+              tCountryRef.current = code;
               setTCountry(code);
               setTRail(railForCountry(code));
             }}

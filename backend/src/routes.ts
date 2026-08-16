@@ -44,6 +44,7 @@ import { runNetting } from "./agents/netting";
 import {
   linkRecipientAccount,
   overrideRail,
+  rebuildSettlement,
   rerouteUnsettled,
   runRouting,
   getRailTypesExercised,
@@ -418,6 +419,7 @@ apiRouter.patch("/entities/:id", (req, res) => {
     patch.name = trimmed;
   }
   if (country !== undefined) patch.country = country;
+  const countryChanged = country !== undefined && country !== existing.country;
   const nextName = patch.name ?? existing.name;
   const nextCountry = patch.country ?? existing.country;
   if (travelerOnTrip(nextName, nextCountry, existing.id)) {
@@ -447,13 +449,17 @@ apiRouter.patch("/entities/:id", (req, res) => {
   if (rails.linkedRailAliases) {
     patch.linkedRailAliases = rails.linkedRailAliases;
   }
+  const hadNets = getStore().netObligations.length > 0;
   const updated = updateEntity(req.params.id, patch);
   if (!updated) {
     res.status(404).json({ success: false, message: "Traveler not found." });
     return;
   }
   const entity = rememberTraveler(updated);
-  if (
+  if (countryChanged && hadNets) {
+    rebuildSettlement();
+  } else if (
+    !countryChanged &&
     patch.linkedRailAliases &&
     getStore().netObligations.some((o) => o.status !== "settled")
   ) {
@@ -526,13 +532,6 @@ apiRouter.post("/netting/run", (_req, res) => {
     });
     return;
   }
-  if (getStore().netObligations.length > 0) {
-    res.status(409).json({
-      success: false,
-      message: "This trip is already netted.",
-    });
-    return;
-  }
   const result = runNetting();
   res.json(result);
 });
@@ -550,13 +549,6 @@ apiRouter.post("/engine/run", (_req, res) => {
     res.status(400).json({
       success: false,
       message: "Add a shared expense before running the engine.",
-    });
-    return;
-  }
-  if (getStore().netObligations.length > 0) {
-    res.status(409).json({
-      success: false,
-      message: "This trip is already netted.",
     });
     return;
   }

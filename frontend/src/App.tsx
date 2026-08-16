@@ -87,8 +87,10 @@ export default function App() {
         ...new Set(s!.netObligations.map((o) => o.chosenRail).filter(Boolean)),
       ] as RailType[]);
       setError(null);
+      return s!;
     } catch (e) {
       setError((e as Error).message);
+      return undefined;
     } finally {
       setLoading(null);
     }
@@ -136,10 +138,11 @@ export default function App() {
       const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
       setEditEntityId(null);
       setEditExpenseId(null);
-      await fetchScenario();
+      const next = await fetchScenario();
+      const stillNetted = (next?.netObligations.length ?? 0) > 0;
       notify(
-        hadTransfers ? `${msg} · run Net & route again` : msg,
-        hadTransfers ? "warn" : "ok",
+        hadTransfers && !stillNetted ? `${msg} · run Net & route again` : msg,
+        hadTransfers && !stillNetted ? "warn" : "ok",
       );
     },
     [fetchScenario, notify, scenario?.netObligations.length],
@@ -228,10 +231,6 @@ export default function App() {
   const handleEngine = async () => {
     if (!scenario || scenario.debtEdges.length === 0) {
       notify("Add a shared expense before netting", "warn");
-      return;
-    }
-    if (scenario.netObligations.length > 0) {
-      notify("This trip is already netted", "warn");
       return;
     }
     setLoading("engine");

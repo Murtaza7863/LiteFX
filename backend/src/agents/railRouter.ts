@@ -20,6 +20,7 @@ import {
   type RailPick,
 } from "../data/railOptions";
 import { primaryRail, hasUsableAccount } from "../data/countries";
+import { runNetting } from "./netting";
 import { evaluateCompliance } from "./compliance";
 
 // ──────────────────────────────────────────────
@@ -278,4 +279,12 @@ export function getRailTypesExercised(): RailType[] {
     if (ob.chosenRail) types.add(ob.chosenRail);
   }
   return Array.from(types);
+}
+
+/** Wipe and rebuild nets + rails. Used after a traveler's country changes. */
+export function rebuildSettlement(): boolean {
+  if (getStore().debtEdges.length === 0) return false;
+  runNetting();
+  runRouting();
+  return true;
 }

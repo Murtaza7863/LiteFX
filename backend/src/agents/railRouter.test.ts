@@ -7,7 +7,7 @@ import {
   updateEntity,
   updateNetObligation,
 } from "../store.js";
-import { traveler } from "../testUtil.js";
+import { traveler, assertCorridorsLegal } from "../testUtil.js";
 import { runNetting } from "./netting.js";
 import {
   getRailTypesExercised,
@@ -17,12 +17,9 @@ import {
 } from "./railRouter.js";
 import {
   COUNTRIES,
-  LINKED_CORRIDORS,
   canonicalizeRail,
-  linkedKey,
   payoutOptionsFor,
   primaryRail,
-  sharedLocalRail,
 } from "../data/countries.js";
 
 afterEach(() => {
@@ -131,45 +128,6 @@ test("linking Eve's account re-routes her claim_link onto PayNow without wiping 
   assert.equal(after?.chosenRail, "local");
   assert.equal(after?.feeUsd, 0);
 });
-
-function assertCorridorsLegal() {
-  const st = getStore();
-  for (const e of st.entities) {
-    for (const a of e.linkedRailAliases) {
-      assert.ok(
-        canonicalizeRail(e.country, a.railType),
-        `${e.name} in ${e.country} still linked to ${a.railType}`,
-      );
-    }
-  }
-  for (const o of st.netObligations) {
-    const from = st.entities.find((e) => e.id === o.from);
-    const to = st.entities.find((e) => e.id === o.to);
-    assert.ok(from && to, o.id);
-    if (o.chosenRail === "local") {
-      assert.ok(
-        sharedLocalRail(from.country, to.country),
-        `local ${from.country}→${to.country}`,
-      );
-    }
-    if (o.chosenRail === "linked") {
-      assert.ok(
-        LINKED_CORRIDORS[linkedKey(from.country, to.country)],
-        `linked ${from.country}→${to.country}`,
-      );
-    }
-    const chosen = o.considered?.find((c) => c.chosen);
-    if (chosen?.type === "local") {
-      assert.ok(sharedLocalRail(from.country, to.country), chosen.railName);
-    }
-    if (chosen?.type === "linked") {
-      assert.ok(
-        LINKED_CORRIDORS[linkedKey(from.country, to.country)],
-        chosen.railName,
-      );
-    }
-  }
-}
 
 function assertBahrainNeverUsesPayNow() {
   assertCorridorsLegal();
