@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type {
-  ComplianceFlag,
   NettingResult,
   RailType,
-  ReconciliationResult,
   ScenarioResponse,
   User,
 } from "./api/client";
@@ -19,21 +17,12 @@ import { ClaimLinkModal } from "./components/ClaimLinkModal";
 import { Collapsible } from "./components/Collapsible";
 import { DebtGraph } from "./components/DebtGraph";
 import { FxBar } from "./components/FxBar";
-import {
-  IconMerge,
-  IconCompass,
-  IconSend,
-  IconShield,
-  IconFileText,
-  IconCheckCircle,
-  IconAlertTriangle,
-  IconChevron,
-} from "./components/icons";
+import { IconMerge, IconSend, IconChevron } from "./components/icons";
 import { LogoMark, Wordmark } from "./components/Logo";
 import { ObligationCard } from "./components/ObligationCard";
 import { ObligationDetail } from "./components/ObligationDetail";
-import { ReconciliationView } from "./components/ReconciliationView";
 import { ScenarioOverview } from "./components/ScenarioOverview";
+import { SettlementLog } from "./components/SettlementLog";
 import { InsightsPanel, SharePlanButton } from "./components/SharePlan";
 import { Stepper } from "./components/Stepper";
 import { ThemeToggle } from "./components/ThemeToggle";
@@ -46,12 +35,6 @@ export default function App() {
     null,
   );
   const [railTypes, setRailTypes] = useState<RailType[]>([]);
-  const [complianceRan, setComplianceRan] = useState(false);
-  const [complianceFlags, setComplianceFlags] = useState<ComplianceFlag[]>([]);
-  const [reconData, setReconData] = useState<{
-    results: ReconciliationResult[];
-    vendorSummary: any[];
-  } | null>(null);
   const [claimModalToken, setClaimModalToken] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [travelerSignal, setTravelerSignal] = useState(0);
@@ -91,16 +74,6 @@ export default function App() {
       setRailTypes([
         ...new Set(s!.netObligations.map((o) => o.chosenRail).filter(Boolean)),
       ] as RailType[]);
-      setComplianceRan(!!s!.complianceRan);
-      setComplianceFlags(s!.complianceFlags ?? []);
-      setReconData(
-        s!.reconciliationRan
-          ? {
-              results: s!.reconciliationResults,
-              vendorSummary: s!.vendorSummary,
-            }
-          : null,
-      );
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -227,28 +200,6 @@ export default function App() {
     [fetchScenario, notify],
   );
 
-  const handleNetting = async () => {
-    setLoading("netting");
-    try {
-      const r = await client.runNetting();
-      setNettingResult(r);
-      setClaimModalToken(null);
-      setDetailId(null);
-      const s = await client.getScenario();
-      setScenario(s);
-      notify(`Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers`);
-      setRailTypes([]);
-      setComplianceRan(false);
-      setComplianceFlags([]);
-      setReconData(null);
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(null);
-    }
-  };
-
   const handleEngine = async () => {
     setLoading("engine");
     try {
@@ -259,68 +210,9 @@ export default function App() {
       setDetailId(null);
       const s = await client.getScenario();
       setScenario(s);
-      setComplianceRan(!!s.complianceRan);
-      setComplianceFlags(s.complianceFlags ?? []);
       notify(
         `Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers and routed them`,
       );
-      setReconData(null);
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleRouting = async () => {
-    setLoading("routing");
-    try {
-      const r = await client.runRouting();
-      setRailTypes(r.railTypesExercised);
-      const s = await client.getScenario();
-      setScenario(s);
-      // Routing runs the compliance stub before marking obligations routed,
-      // so surface its flags now too.
-      setComplianceRan(!!s.complianceRan);
-      setComplianceFlags(s.complianceFlags ?? []);
-      notify(`Routed ${r.obligations.length} obligations across rails`);
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleCompliance = async () => {
-    setLoading("compliance");
-    try {
-      const r = await client.runCompliance();
-      setComplianceFlags(r.flags);
-      setComplianceRan(true);
-      notify(
-        r.flags.length
-          ? `${r.flags.length} compliance flag(s) raised`
-          : "Compliance clear",
-        r.flags.length ? "warn" : "ok",
-      );
-      const s = await client.getScenario();
-      setScenario(s);
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleReconciliation = async () => {
-    setLoading("reconciliation");
-    try {
-      const r = await client.runReconciliation();
-      setReconData({ results: r.results, vendorSummary: r.vendorSummary });
-      notify("Reconciliation complete");
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -408,6 +300,43 @@ export default function App() {
     }
   };
 
+  const handleOverrideRail = async (obligationId: string, railName: string) => {
+    setLoading(`rail-${obligationId}`);
+    try {
+      await client.overrideRail(obligationId, railName);
+      const s = await client.getScenario();
+      setScenario(s);
+      setRailTypes([
+        ...new Set(s.netObligations.map((o) => o.chosenRail).filter(Boolean)),
+      ] as RailType[]);
+      notify(`Rail switched to ${railName}`);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleLinkAccount = async (entityId: string) => {
+    setLoading(`link-${entityId}`);
+    try {
+      const r = await client.linkAccount(entityId);
+      const s = await client.getScenario();
+      setScenario(s);
+      setRailTypes([
+        ...new Set(s.netObligations.map((o) => o.chosenRail).filter(Boolean)),
+      ] as RailType[]);
+      const rail = r.entity.linkedRailAliases[0]?.railType ?? "account";
+      notify(`${r.entity.name.trim()} linked ${rail} — transfers re-routed`);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(null);
+    }
+  };
+
   const handleReset = async () => {
     if (
       !window.confirm(
@@ -426,9 +355,6 @@ export default function App() {
       setDetailId(null);
       setNettingResult(null);
       setRailTypes([]);
-      setComplianceRan(false);
-      setComplianceFlags([]);
-      setReconData(null);
       await fetchScenario();
       setError(null);
     } catch (e) {
@@ -448,9 +374,6 @@ export default function App() {
     setScenario(null);
     setNettingResult(null);
     setRailTypes([]);
-    setComplianceRan(false);
-    setComplianceFlags([]);
-    setReconData(null);
     setClaimModalToken(null);
     setDetailId(null);
     setEditEntityId(null);
@@ -477,53 +400,23 @@ export default function App() {
   const stepDefs = [
     {
       id: "net",
-      label: "Net",
-      sub: "Collapse debts",
+      label: "Net & route",
+      sub: "Collapse debts and pick rails",
       icon: <IconMerge className="h-4 w-4" />,
-      done: !!nettingResult,
-      loadingKey: "netting",
-      enabled: true,
-      onClick: handleNetting,
-    },
-    {
-      id: "route",
-      label: "Route",
-      sub: "Pick rails",
-      icon: <IconCompass className="h-4 w-4" />,
       done: railTypes.length > 0,
-      loadingKey: "routing",
-      enabled: !!nettingResult,
-      onClick: handleRouting,
+      loadingKey: "engine",
+      enabled: true,
+      onClick: handleEngine,
     },
     {
       id: "settle",
       label: "Settle",
-      sub: "Move money",
+      sub: "Issue transfers",
       icon: <IconSend className="h-4 w-4" />,
       done: allActed,
       loadingKey: "settle-all",
       enabled: railTypes.length > 0,
       onClick: handleSettleAll,
-    },
-    {
-      id: "comply",
-      label: "Compliance",
-      sub: "Flag checks",
-      icon: <IconShield className="h-4 w-4" />,
-      done: complianceRan,
-      loadingKey: "compliance",
-      enabled: !!nettingResult,
-      onClick: handleCompliance,
-    },
-    {
-      id: "recon",
-      label: "Reconcile",
-      sub: "Match invoices",
-      icon: <IconFileText className="h-4 w-4" />,
-      done: !!reconData,
-      loadingKey: "reconciliation",
-      enabled: !!nettingResult,
-      onClick: handleReconciliation,
     },
   ];
 
@@ -587,17 +480,12 @@ export default function App() {
           label: loading === "engine" ? "Running…" : "Net & route",
           onClick: handleEngine,
         }
-      : hasNetted && railTypes.length === 0
+      : hasNetted && !allActed
         ? {
-            label: loading === "routing" ? "Routing…" : "Route",
-            onClick: handleRouting,
+            label: loading === "settle-all" ? "Settling…" : "Settle all",
+            onClick: handleSettleAll,
           }
-        : hasNetted && !allActed
-          ? {
-              label: loading === "settle-all" ? "Settling…" : "Settle all",
-              onClick: handleSettleAll,
-            }
-          : null;
+        : null;
 
   const graphBlock = (
     <Collapsible
@@ -608,7 +496,7 @@ export default function App() {
           ? `${obligations.length} transfer${obligations.length === 1 ? "" : "s"}`
           : `${debtCount} IOU${debtCount === 1 ? "" : "s"}`
       }
-      defaultOpen={!hasNetted}
+      defaultOpen
       badge={
         railTypes.length > 0 ? <RailLegend types={railTypes} /> : undefined
       }
@@ -733,7 +621,10 @@ export default function App() {
             </div>
             {scenario.plan?.insights && scenario.plan.insights.length > 0 && (
               <div className="mb-2.5">
-                <InsightsPanel insights={scenario.plan.insights} />
+                <InsightsPanel
+                  insights={scenario.plan.insights}
+                  onLink={(id) => void handleLinkAccount(id)}
+                />
               </div>
             )}
             {obligations.some(
@@ -797,70 +688,17 @@ export default function App() {
         ) : (
           <>
             {tripPanel}
-            {!hasNetted && debtCount > 0 && graphBlock}
+            {(debtCount > 0 || hasNetted) && graphBlock}
           </>
         )}
 
-        {(complianceRan || complianceFlags.length > 0) && (
+        {scenario.ledger.length > 0 && (
           <Collapsible
-            title="Compliance"
-            sub={
-              complianceFlags.length > 0
-                ? `${complianceFlags.length} flag${complianceFlags.length === 1 ? "" : "s"}`
-                : "All clear"
-            }
-            defaultOpen={complianceFlags.length > 0}
+            title="Settlement log"
+            sub={`${scenario.ledger.length} recorded transfer${scenario.ledger.length === 1 ? "" : "s"}`}
+            defaultOpen
           >
-            {complianceFlags.length === 0 ? (
-              <div className="flex items-center gap-3 py-1">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#9aaa8c]/15 text-[#9aaa8c]">
-                  <IconCheckCircle className="h-4 w-4" />
-                </span>
-                <p className="text-slate-400 text-sm">
-                  No corridor-limit or frequency anomalies on the mocked rules.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {complianceFlags.map((f, i) => (
-                  <div
-                    key={i}
-                    className="border-orange-500/20 bg-orange-500/5 flex items-start gap-3 rounded-xl border p-3"
-                  >
-                    <span className="bg-orange-500/15 text-orange-300 flex h-7 w-7 shrink-0 items-center justify-center rounded-full">
-                      <IconAlertTriangle className="h-3.5 w-3.5" />
-                    </span>
-                    <div>
-                      <p className="text-slate-200 text-[13px]">
-                        <span className="font-semibold">
-                          {f.type === "limit_exceeded"
-                            ? "Limit exceeded"
-                            : "Frequency anomaly"}
-                        </span>
-                        <span className="text-slate-400"> — {f.message}</span>
-                      </p>
-                      <p className="text-slate-600 mt-0.5 font-mono text-[11px]">
-                        {f.obligationId}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Collapsible>
-        )}
-
-        {reconData && (
-          <Collapsible
-            title="B2B reconciliation"
-            sub="Match settlements against vendor invoices"
-            defaultOpen={reconData.results.some(
-              (r) => r.status !== "reconciled",
-            )}
-          >
-            <ReconciliationView
-              results={reconData.results}
-              vendorSummary={reconData.vendorSummary}
+            <SettlementLog
               ledger={scenario.ledger}
               entityName={(id) => entityMap.get(id)?.name.trim() ?? id}
             />
@@ -900,6 +738,11 @@ export default function App() {
               toEntity={to}
               debtEdges={scenario?.debtEdges ?? []}
               onClose={() => setDetailId(null)}
+              busy={loading !== null}
+              onOverride={(railName) =>
+                void handleOverrideRail(ob.id, railName)
+              }
+              onLink={() => void handleLinkAccount(to.id)}
             />
           ) : null;
         })()}

@@ -35,17 +35,12 @@ point a reverse proxy at `PORT` (defaults to 3001).
 
 ## Demo Flow (under 2 minutes)
 
-1. **View the scenario** — 6 travelers across Singapore, Thailand, the US, and Germany, with 9 shared expenses and 30 raw pairwise debts.
-2. **Click "Run Netting"** — watch the debt graph collapse from 30 edges to 5 net obligations (6:1 reduction).
-3. **Click "Route All"** — each obligation gets a rail assignment with a human-readable reasoning string. All 4 rail types are exercised:
-   - `local` — same-country instant rail (e.g. PromptPay within Thailand)
-   - `linked` — bilateral instant-payment scheme (e.g. PayNow↔PromptPay between SG and TH)
-   - `claim_link` — for recipients with no linked account
-   - `stable_bridge` — stablecoin fallback for corridors with no direct rail
-4. **Click "Settle All"** — obligations settle (mocked). The claim-link obligation generates a claim token.
-5. **Click "Open Claim Link"** — a modal simulates the recipient's view. Pick a payout method, click "Claim" — no account creation needed.
-6. **Click "Compliance"** — shows compliance flags (rules stub, no blocking).
-7. **Click "Reconciliation"** — matches settled amounts against vendor invoices, flags mismatches.
+1. **Open the sample trip** — 6 travelers across Singapore, Thailand, the US, and Germany.
+2. **Click "Net & route"** — pairwise IOUs collapse into a handful of transfers, each assigned a rail (local / linked / claim link / USDC) with a fee.
+3. **Open a transfer → Try another rail** — switch a PromptPay (0%) payout to USDC (1.5%) and watch the fee jump.
+4. **Link Eve's PayNow** — the insight button drops her claim link and re-routes onto local PayNow.
+5. **Copy send instructions** — who sends what, via which rail, to which alias.
+6. **Settle** — local/linked/USDC mark settled; a remaining claim link opens a recipient page with no account needed.
 
 ## Architecture
 
@@ -77,7 +72,7 @@ LiteFX/
 │   │       ├── ObligationCard.tsx  # Per-obligation card with rail + reason
 │   │       ├── ClaimLinkModal.tsx  # Recipient claim-link view
 │   │       ├── ScenarioOverview.tsx
-│   │       └── ReconciliationView.tsx
+│   │       └── SettlementLog.tsx
 │   └── package.json
 └── test-flow.sh             # End-to-end API test script
 ```

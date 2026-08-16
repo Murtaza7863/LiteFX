@@ -21,3 +21,6 @@ export const EXPENSE_CATEGORIES = [
 
 export const categoryLabel = (id: string): string =>
   EXPENSE_CATEGORIES.find((c) => c.id === id)?.label ?? "General";
+
+export { classifyExpense } from "../../../backend/src/data/classifyExpense";
+export type { ExpenseGuess } from "../../../backend/src/data/classifyExpense";

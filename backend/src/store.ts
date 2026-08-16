@@ -572,11 +572,7 @@ export function updateEntity(
   const st = getStore();
   const e = st.entities.find((x) => x.id === id);
   if (!e) return null;
-  const nextCountry = patch.country ?? e.country;
-  const nextRails = patch.linkedRailAliases ?? e.linkedRailAliases;
-  const routingChanged =
-    nextCountry !== e.country ||
-    JSON.stringify(nextRails) !== JSON.stringify(e.linkedRailAliases);
+  const countryChanged = (patch.country ?? e.country) !== e.country;
   if (patch.name !== undefined) e.name = patch.name;
   if (patch.country !== undefined) e.country = patch.country;
   if (patch.contact !== undefined) e.contact = patch.contact;
@@ -587,7 +583,9 @@ export function updateEntity(
       if (b.entityId === id) b.entityName = patch.name;
     }
   }
-  if (routingChanged) invalidateDerived();
+  // Country changes the corridor graph, so nets must be rebuilt.
+  // Linking a rail does not — callers re-route unsettled transfers.
+  if (countryChanged) invalidateDerived();
   save();
   return e;
 }

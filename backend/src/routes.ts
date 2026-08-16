@@ -21,9 +21,16 @@ import {
 import { FX_TABLE } from "./types";
 import type { Expense } from "./types";
 import { canonicalizeRail, countryByCode } from "./data/countries";
+import { classifyExpense, isExpenseCategory } from "./data/classifyExpense";
 import { getFxSnapshot } from "./fx";
 import { runNetting } from "./agents/netting";
-import { runRouting, getRailTypesExercised } from "./agents/railRouter";
+import {
+  linkRecipientAccount,
+  overrideRail,
+  rerouteUnsettled,
+  runRouting,
+  getRailTypesExercised,
+} from "./agents/railRouter";
 import { runCompliance } from "./agents/compliance";
 import { runReconciliation } from "./agents/reconciliation";
 import { buildSettlementPlan } from "./agents/plan";
@@ -142,14 +149,6 @@ apiRouter.post("/auth/demo", async (req, res) => {
   res.status(201).json({ success: true, user: toPublicUser(user) });
 });
 
-const EXPENSE_CATEGORIES = [
-  "food",
-  "accommodation",
-  "transport",
-  "activities",
-  "general",
-] as const;
-
 type ExpenseBody = {
   payerId?: string;
   participantIds?: string[];
@@ -201,17 +200,15 @@ function parseExpenseFields(
   const split = body.split ?? existing?.split;
   const splitError = validateExpenseSplit(split, amt);
   if (splitError) return { error: splitError };
-  const categoryRaw = (body.category ?? existing?.category ?? "general")
-    .toLowerCase()
-    .trim();
-  const category = EXPENSE_CATEGORIES.includes(
-    categoryRaw as (typeof EXPENSE_CATEGORIES)[number],
-  )
-    ? categoryRaw
-    : "general";
   const description = (
     (body.description ?? existing?.description ?? "").trim() || "Custom expense"
   ).slice(0, 200);
+  const rawCategory = (body.category ?? "").toLowerCase().trim();
+  const category = isExpenseCategory(rawCategory)
+    ? rawCategory
+    : existing && body.category === undefined && existing.category
+      ? existing.category
+      : classifyExpense(description).category;
   return {
     payerId,
     participantIds: participants,
@@ -360,6 +357,12 @@ apiRouter.patch("/entities/:id", (req, res) => {
       : [];
   }
   const entity = updateEntity(req.params.id, patch);
+  if (
+    patch.linkedRailAliases &&
+    getStore().netObligations.some((o) => o.status !== "settled")
+  ) {
+    rerouteUnsettled({ to: req.params.id });
+  }
   res.json({ success: true, entity });
 });
 
@@ -432,6 +435,39 @@ apiRouter.post("/engine/run", (_req, res) => {
     obligations,
     railTypesExercised: getRailTypesExercised(),
   });
+});
+
+// ── POST /api/obligations/:id/rail — judge/demo rail override ──
+apiRouter.post("/obligations/:id/rail", (req, res) => {
+  const railName = String(
+    (req.body as { railName?: string })?.railName ?? "",
+  ).trim();
+  if (!railName) {
+    res.status(400).json({ success: false, message: "railName is required." });
+    return;
+  }
+  try {
+    const obligation = overrideRail(req.params.id, railName);
+    res.json({ success: true, obligation });
+  } catch (e) {
+    const msg = (e as Error).message;
+    const code = /not found/i.test(msg)
+      ? 404
+      : /settled|no linked|not available/i.test(msg)
+        ? 400
+        : 400;
+    res.status(code).json({ success: false, message: msg });
+  }
+});
+
+// ── POST /api/entities/:id/link-account — attach primary rail and re-route ──
+apiRouter.post("/entities/:id/link-account", (req, res) => {
+  try {
+    const entity = linkRecipientAccount(req.params.id);
+    res.json({ success: true, entity });
+  } catch (e) {
+    res.status(404).json({ success: false, message: (e as Error).message });
+  }
 });
 
 // ── POST /api/compliance/run — run compliance checks ──

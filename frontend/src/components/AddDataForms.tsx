@@ -9,6 +9,7 @@ import {
   railsFor,
   primaryRail,
   currencyFor,
+  classifyExpense,
 } from "../lib/countries";
 import { CountrySelect } from "./CountrySelect";
 import { IconPlus, IconDownload, IconMore } from "./icons";
@@ -116,6 +117,7 @@ export function AddDataForms({
   const [eAmount, setEAmount] = useState("");
   const [eCurrency, setECurrency] = useState("USD");
   const [eCategory, setECategory] = useState("general");
+  const [eCategoryLocked, setECategoryLocked] = useState(false);
   const [ePayer, setEPayer] = useState("");
   const [eAll, setEAll] = useState(true);
   const [eParticipants, setEParticipants] = useState<string[]>([]);
@@ -150,6 +152,8 @@ export function AddDataForms({
     setEAmount(String(editExpense.amount));
     setECurrency(editExpense.currency);
     setECategory(editExpense.category || "general");
+    const guessed = classifyExpense(editExpense.description).category;
+    setECategoryLocked((editExpense.category || "general") !== guessed);
     setEPayer(editExpense.payerId);
     const allIds = entities
       .map((e) => e.id)
@@ -198,6 +202,7 @@ export function AddDataForms({
     setEParts({});
     setESplitMode("equal");
     setECategory("general");
+    setECategoryLocked(false);
     setEAll(true);
   };
 
@@ -296,6 +301,8 @@ export function AddDataForms({
     }
   };
 
+  const expenseGuess = classifyExpense(eDesc);
+
   const partEntities = eAll
     ? entities
     : entities.filter((en) => eParticipants.includes(en.id));
@@ -388,6 +395,7 @@ export function AddDataForms({
                 return;
               }
               onCancelEdit?.();
+              resetExpenseForm();
               setOpen("expense");
             }}
             disabled={entities.length === 0}
@@ -484,11 +492,67 @@ export function AddDataForms({
             </p>
           )}
           <input
-            className={inputCls}
-            placeholder="Description (e.g. Dinner)"
+            className={`${inputCls} sm:col-span-2`}
+            placeholder="Hotel, Grab to airport, dinner…"
             value={eDesc}
-            onChange={(e) => setEDesc(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEDesc(v);
+              if (!eCategoryLocked) setECategory(classifyExpense(v).category);
+            }}
+            aria-label="Expense title"
           />
+          <div
+            className="flex flex-wrap items-center gap-1.5 sm:col-span-2"
+            role="group"
+            aria-label="Category"
+          >
+            {EXPENSE_CATEGORIES.map((c) => {
+              const on = eCategory === c.id;
+              const auto =
+                !eCategoryLocked &&
+                expenseGuess.category === c.id &&
+                !!expenseGuess.matched;
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  aria-pressed={on}
+                  onClick={() => {
+                    if (on && eCategoryLocked) {
+                      setECategoryLocked(false);
+                      setECategory(expenseGuess.category);
+                      return;
+                    }
+                    setECategory(c.id);
+                    setECategoryLocked(true);
+                  }}
+                  className={`chip border transition-colors ${
+                    on
+                      ? "border-transparent bg-[var(--text)] text-[var(--bg)]"
+                      : "bg-white/[0.03] border-white/[0.08] text-slate-400"
+                  }`}
+                >
+                  {c.label}
+                  {auto && <span className="font-normal opacity-50">auto</span>}
+                </button>
+              );
+            })}
+            {eCategoryLocked &&
+              expenseGuess.matched &&
+              expenseGuess.category !== eCategory && (
+                <button
+                  type="button"
+                  className="text-slate-500 hover:text-slate-300 text-[11px]"
+                  onClick={() => {
+                    setECategory(expenseGuess.category);
+                    setECategoryLocked(false);
+                  }}
+                >
+                  Use {expenseGuess.label}
+                </button>
+              )}
+          </div>
           <div className="flex gap-2">
             <input
               className={inputCls}
@@ -510,17 +574,6 @@ export function AddDataForms({
               ))}
             </select>
           </div>
-          <select
-            className={inputCls}
-            value={eCategory}
-            onChange={(e) => setECategory(e.target.value)}
-          >
-            {EXPENSE_CATEGORIES.map((c) => (
-              <option key={c.id} value={c.id} className="bg-slate-900">
-                {c.label}
-              </option>
-            ))}
-          </select>
           <select
             className={inputCls}
             value={ePayer}

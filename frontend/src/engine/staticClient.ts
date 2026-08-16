@@ -15,10 +15,17 @@ import {
   canonicalizeRail,
   countryByCode,
 } from "../../../backend/src/data/countries";
+import {
+  classifyExpense,
+  isExpenseCategory,
+} from "../../../backend/src/data/classifyExpense";
 import { getFxSnapshot, refreshFx } from "../../../backend/src/fx";
 import { runNetting } from "../../../backend/src/agents/netting";
 import {
   getRailTypesExercised,
+  linkRecipientAccount,
+  overrideRail,
+  rerouteUnsettled,
   runRouting,
 } from "../../../backend/src/agents/railRouter";
 import { runCompliance } from "../../../backend/src/agents/compliance";
@@ -54,14 +61,6 @@ import {
 
 const SESSION_KEY = "litefx-web-user";
 const USERS_KEY = "litefx-web-pass";
-
-const EXPENSE_CATEGORIES = [
-  "food",
-  "accommodation",
-  "transport",
-  "activities",
-  "general",
-] as const;
 
 let booted = false;
 
@@ -201,17 +200,15 @@ function parseExpenseFields(
   const split = body.split ?? existing?.split;
   const splitError = validateExpenseSplit(split, amt);
   if (splitError) throw new Error(splitError);
-  const categoryRaw = (body.category ?? existing?.category ?? "general")
-    .toLowerCase()
-    .trim();
-  const category = EXPENSE_CATEGORIES.includes(
-    categoryRaw as (typeof EXPENSE_CATEGORIES)[number],
-  )
-    ? categoryRaw
-    : "general";
   const description = (
     (body.description ?? existing?.description ?? "").trim() || "Custom expense"
   ).slice(0, 200);
+  const rawCategory = (body.category ?? "").toLowerCase().trim();
+  const category = isExpenseCategory(rawCategory)
+    ? rawCategory
+    : existing && body.category === undefined && existing.category
+      ? existing.category
+      : classifyExpense(description).category;
   return {
     payerId,
     participantIds: participants,
@@ -271,6 +268,20 @@ export const staticClient = {
   settle: async (id: string) => {
     await boot();
     return asUser(() => settleObligation(id));
+  },
+  overrideRail: async (id: string, railName: string) => {
+    await boot();
+    return asUser(() => ({
+      success: true as const,
+      obligation: overrideRail(id, railName),
+    }));
+  },
+  linkAccount: async (id: string) => {
+    await boot();
+    return asUser(() => ({
+      success: true as const,
+      entity: linkRecipientAccount(id),
+    }));
   },
   getClaim: async (token: string) => {
     await boot();
@@ -425,6 +436,12 @@ export const staticClient = {
       }
       const entity = updateEntity(id, patch);
       if (!entity) throw new Error("Traveler not found.");
+      if (
+        patch.linkedRailAliases &&
+        getStore().netObligations.some((o) => o.status !== "settled")
+      ) {
+        rerouteUnsettled({ to: id });
+      }
       return { success: true, entity };
     });
   },

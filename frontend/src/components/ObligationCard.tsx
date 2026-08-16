@@ -1,5 +1,8 @@
+import { useState } from "react";
+
 import type { Entity, NetObligation } from "../api/client";
 
+import { paymentSlip } from "../lib/paymentSlip";
 import { countryFlag, RAIL_META } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { RailIcon, IconAlertTriangle } from "./icons";
@@ -44,6 +47,8 @@ export function ObligationCard({
 }: Props) {
   const rail = obligation.chosenRail;
   const meta = rail ? RAIL_META[rail] : null;
+  const slip = paymentSlip(obligation, fromEntity, toEntity);
+  const [copied, setCopied] = useState(false);
   const status =
     rail === "claim_link" &&
     obligation.claimToken &&
@@ -149,17 +154,35 @@ export function ObligationCard({
         )}
         {obligation.status === "pending" && (
           <p className="text-slate-600 py-2.5 text-center text-sm">
-            Run routing first
+            Net & route first
           </p>
         )}
       </div>
 
+      {obligation.chosenRail && (
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(slip.text);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1600);
+            } catch {
+              /* ignore */
+            }
+          }}
+          className="text-slate-500 hover:text-slate-200 mt-1.5 w-full text-center text-[11px] font-medium transition-colors"
+        >
+          {copied ? "Instructions copied" : "Copy send instructions"}
+        </button>
+      )}
+
       {obligation.considered && obligation.considered.length > 0 && (
         <button
           onClick={() => onOpenDetail(obligation.id)}
-          className="text-slate-500 hover:text-slate-200 mt-2 w-full text-center text-[11px] font-medium transition-colors"
+          className="text-slate-500 hover:text-slate-200 mt-1 w-full text-center text-[11px] font-medium transition-colors"
         >
-          View routing decision →
+          Try another rail →
         </button>
       )}
     </div>

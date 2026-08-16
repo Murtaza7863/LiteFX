@@ -1,6 +1,8 @@
+import { useState } from "react";
+
 import type { Entity, Expense } from "../api/client";
 
-import { categoryLabel } from "../lib/countries";
+import { categoryLabel, EXPENSE_CATEGORIES } from "../lib/countries";
 import { countryFlag, COUNTRY_NAMES } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { IconPencil, IconX } from "./icons";
@@ -22,6 +24,15 @@ export function ScenarioOverview({
   onEditTraveler,
   onEditExpense,
 }: Props) {
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const activeFilter =
+    categoryFilter && expenses.some((e) => e.category === categoryFilter)
+      ? categoryFilter
+      : null;
+  const visible = activeFilter
+    ? expenses.filter((e) => e.category === activeFilter)
+    : expenses;
+
   return (
     <div className="space-y-4">
       {entities.length === 0 ? (
@@ -96,6 +107,29 @@ export function ScenarioOverview({
 
       {expenses.length > 0 && (
         <div className="bg-white/[0.03] border-white/[0.06] overflow-hidden rounded-xl border">
+          <div className="border-white/[0.06] flex flex-wrap gap-1.5 border-b px-3.5 py-2">
+            {EXPENSE_CATEGORIES.map((c) => {
+              const n = expenses.filter((e) => e.category === c.id).length;
+              if (n === 0) return null;
+              const on = activeFilter === c.id;
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  onClick={() =>
+                    setCategoryFilter((cur) => (cur === c.id ? null : c.id))
+                  }
+                  className={`chip border transition-colors ${
+                    on
+                      ? "border-transparent bg-[var(--text)] text-[var(--bg)]"
+                      : "border-white/[0.08] text-slate-400"
+                  }`}
+                >
+                  {c.label} {n}
+                </button>
+              );
+            })}
+          </div>
           <div className="max-h-72 overflow-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-[var(--header-bg)]">
@@ -111,7 +145,7 @@ export function ScenarioOverview({
                 </tr>
               </thead>
               <tbody>
-                {expenses.map((exp) => {
+                {visible.map((exp) => {
                   const payer = entities.find((e) => e.id === exp.payerId);
                   return (
                     <tr

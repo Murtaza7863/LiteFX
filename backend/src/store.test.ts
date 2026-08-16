@@ -278,6 +278,16 @@ test("changing a traveler country wipes derived nets", () => {
   assert.equal(getStore().netObligations.length, 0);
 });
 
+test("linking a rail keeps nets", () => {
+  seedStore();
+  runNetting();
+  const nets = getStore().netObligations.length;
+  updateEntity("ent-eve", {
+    linkedRailAliases: [{ railType: "PayNow", alias: "+6580009999" }],
+  });
+  assert.equal(getStore().netObligations.length, nets);
+});
+
 test("editing only an expense description keeps nets", () => {
   seedStore();
   runNetting();

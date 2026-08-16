@@ -224,6 +224,41 @@ test("POST /expenses can split among others without adding the payer", async () 
   );
 });
 
+test("POST /expenses classifies a title when category is omitted", async () => {
+  asUser(() =>
+    loadTrip([
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+    ]),
+  );
+  const { status, body } = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "a",
+      participantIds: ["a", "b"],
+      amount: 24,
+      currency: "USD",
+      description: "Grab to the airport",
+    }),
+  });
+  assert.equal(status, 200, body.message);
+  assert.equal(body.expense.category, "transport");
+
+  const override = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "a",
+      participantIds: ["a", "b"],
+      amount: 12,
+      currency: "USD",
+      description: "Dinner",
+      category: "transport",
+    }),
+  });
+  assert.equal(override.status, 200, override.body.message);
+  assert.equal(override.body.expense.category, "transport");
+});
+
 test("POST /engine/run nets and routes the sample trip", async () => {
   asUser(() => seedStore());
   const { status, body } = await json("/engine/run", { method: "POST" });
@@ -416,4 +451,36 @@ test("GET /scenario requires sign-in", async () => {
   const { status, body } = await json("/scenario", undefined, false);
   assert.equal(status, 401);
   assert.equal(body.success, false);
+});
+
+test("POST /obligations/:id/rail overrides the chosen rail", async () => {
+  asUser(() => seedStore());
+  await json("/engine/run", { method: "POST" });
+  const scenario = await json("/scenario");
+  const local = scenario.body.netObligations.find(
+    (o: { chosenRail?: string }) => o.chosenRail === "local",
+  );
+  assert.ok(local);
+  const { status, body } = await json(`/obligations/${local.id}/rail`, {
+    method: "POST",
+    body: JSON.stringify({ railName: "USDC Bridge (Circle)" }),
+  });
+  assert.equal(status, 200, body.message);
+  assert.equal(body.obligation.chosenRail, "stable_bridge");
+});
+
+test("POST /entities/:id/link-account turns Eve's claim into local PayNow", async () => {
+  asUser(() => seedStore());
+  await json("/engine/run", { method: "POST" });
+  const { status, body } = await json("/entities/ent-eve/link-account", {
+    method: "POST",
+    body: "{}",
+  });
+  assert.equal(status, 200, body.message);
+  assert.equal(body.entity.linkedRailAliases[0].railType, "PayNow");
+  const scenario = await json("/scenario");
+  const eve = scenario.body.netObligations.find(
+    (o: { to: string }) => o.to === "ent-eve",
+  );
+  assert.equal(eve.chosenRail, "local");
 });

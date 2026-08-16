@@ -44,6 +44,7 @@ export interface RailConsideration {
   feeEstimatePct: number;
   timeEstimateHours: number;
   chosen: boolean;
+  eligible?: boolean;
   note: string;
 }
 
@@ -236,6 +237,18 @@ export const httpClient = {
     api<{ success: boolean; message: string; link?: ClaimLink }>(
       `/settlement/${id}/settle`,
       "POST",
+    ),
+  overrideRail: (id: string, railName: string) =>
+    api<{ success: boolean; obligation: NetObligation }>(
+      `/obligations/${id}/rail`,
+      "POST",
+      { railName },
+    ),
+  linkAccount: (id: string) =>
+    api<{ success: boolean; entity: Entity }>(
+      `/entities/${id}/link-account`,
+      "POST",
+      {},
     ),
   getClaim: (token: string) => api<ClaimDetails>(`/claim/${token}`),
   claimWithPayout: (token: string, payoutMethod: string) =>

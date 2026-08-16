@@ -42,23 +42,41 @@ export function SharePlanButton({
   );
 }
 
-export function InsightsPanel({ insights }: { insights: SettlementInsight[] }) {
+export function InsightsPanel({
+  insights,
+  onLink,
+}: {
+  insights: SettlementInsight[];
+  onLink?: (recipientId: string) => void;
+}) {
   if (insights.length === 0) return null;
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {insights.map((tip) => (
-        <p
+        <div
           key={tip.recipientId}
-          className="text-slate-400 text-[12px] leading-snug"
+          className="flex flex-wrap items-start justify-between gap-2"
         >
-          {tip.message}
-          {tip.savingsUsd > 0 && (
-            <span className="text-slate-500">
-              {" "}
-              (${tip.currentFeeUsd.toFixed(2)} → ${tip.linkedFeeUsd.toFixed(2)})
-            </span>
+          <p className="text-slate-400 min-w-0 flex-1 text-[12px] leading-snug">
+            {tip.message}
+            {tip.savingsUsd > 0 && (
+              <span className="text-slate-500">
+                {" "}
+                (${tip.currentFeeUsd.toFixed(2)} → $
+                {tip.linkedFeeUsd.toFixed(2)})
+              </span>
+            )}
+          </p>
+          {onLink && (
+            <button
+              type="button"
+              onClick={() => onLink(tip.recipientId)}
+              className="btn-ghost shrink-0 !px-2.5 !py-1 text-[11px]"
+            >
+              Link {tip.suggestedRail}
+            </button>
           )}
-        </p>
+        </div>
       ))}
     </div>
   );

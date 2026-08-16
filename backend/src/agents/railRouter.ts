@@ -1,6 +1,24 @@
-import type { NetObligation, RailType, RailConsideration } from "../types";
-import { getEntity, getStore, updateNetObligation } from "../store";
-import { cheapestRail, corridorOptions } from "../data/railOptions";
+import type {
+  Entity,
+  NetObligation,
+  RailConsideration,
+  RailType,
+} from "../types";
+import {
+  getEntity,
+  getNetObligation,
+  getStore,
+  updateClaimLink,
+  updateEntity,
+  updateNetObligation,
+} from "../store";
+import {
+  CLAIM_LINK_PICK,
+  cheapestRail,
+  corridorOptions,
+  type RailPick,
+} from "../data/railOptions";
+import { primaryRail } from "../data/countries";
 import { evaluateCompliance } from "./compliance";
 
 // ──────────────────────────────────────────────
@@ -8,12 +26,9 @@ import { evaluateCompliance } from "./compliance";
 //
 // For each net obligation, pick the cheapest rail
 // the recipient can actually use, and explain why.
-//
-// Eligible set:
-//   - no linked account → claim_link only
-//   - otherwise every corridor option (local / SEPA,
-//     linked bilateral, USDC fallback)
-// Pick lowest fee, then fastest.
+// Judges can override that pick or link an account
+// to unlock cheaper rails — both re-route without
+// wiping the netted graph.
 // ──────────────────────────────────────────────
 
 export interface RoutingDecision {
@@ -58,35 +73,156 @@ export function routeObligation(ob: NetObligation): RoutingDecision | null {
   };
 }
 
+function applyPick(
+  ob: NetObligation,
+  sender: Entity,
+  recipient: Entity,
+  pick: RailPick,
+  reason: string,
+): void {
+  if (pick.type !== "claim_link") dropPendingClaims(ob.id);
+  updateNetObligation(ob.id, {
+    chosenRail: pick.type,
+    routingReason: reason,
+    considered: buildConsidered(sender, recipient, pick.type, pick.railName),
+    feeUsd: Math.round(ob.amountUsd * pick.feeEstimatePct) / 100,
+    timeHours: pick.timeEstimateHours,
+    status: "routed",
+  });
+}
+
+function dropPendingClaims(obligationId: string): void {
+  const st = getStore();
+  for (const c of st.claimLinks) {
+    if (c.obligationId === obligationId && c.status === "pending") {
+      updateClaimLink(c.token, { status: "expired" });
+    }
+  }
+  const current = getNetObligation(obligationId);
+  if (current && "claimToken" in current) {
+    delete current.claimToken;
+    updateNetObligation(obligationId, {});
+  }
+}
+
 export function runRouting(): NetObligation[] {
-  const store = getStore();
-  const obligations = store.netObligations;
-
   evaluateCompliance();
-
-  for (const ob of obligations) {
+  for (const ob of getStore().netObligations) {
     if (ob.status !== "pending") continue;
     const decision = routeObligation(ob);
     if (!decision) continue;
     const sender = getEntity(ob.from);
     const recipient = getEntity(ob.to);
     if (!sender || !recipient) continue;
-    updateNetObligation(ob.id, {
-      chosenRail: decision.rail,
-      routingReason: decision.reason,
-      considered: buildConsidered(
-        sender,
-        recipient,
-        decision.rail,
-        decision.railName,
-      ),
-      feeUsd: Math.round(ob.amountUsd * decision.feeEstimatePct) / 100,
-      timeHours: decision.timeEstimateHours,
-      status: "routed",
-    });
+    applyPick(
+      ob,
+      sender,
+      recipient,
+      {
+        type: decision.rail,
+        railName: decision.railName,
+        feeEstimatePct: decision.feeEstimatePct,
+        timeEstimateHours: decision.timeEstimateHours,
+      },
+      decision.reason,
+    );
+  }
+  return getStore().netObligations;
+}
+
+/** Re-run routing on unsettled transfers (e.g. after linking an account). */
+export function rerouteUnsettled(filter?: { to?: string }): NetObligation[] {
+  evaluateCompliance();
+  for (const ob of getStore().netObligations) {
+    if (ob.status === "settled") continue;
+    if (filter?.to && ob.to !== filter.to) continue;
+    const decision = routeObligation(ob);
+    if (!decision) continue;
+    const sender = getEntity(ob.from);
+    const recipient = getEntity(ob.to);
+    if (!sender || !recipient) continue;
+    applyPick(
+      ob,
+      sender,
+      recipient,
+      {
+        type: decision.rail,
+        railName: decision.railName,
+        feeEstimatePct: decision.feeEstimatePct,
+        timeEstimateHours: decision.timeEstimateHours,
+      },
+      decision.reason,
+    );
+  }
+  return getStore().netObligations;
+}
+
+export function overrideRail(
+  obligationId: string,
+  railName: string,
+): NetObligation {
+  const ob = getNetObligation(obligationId);
+  if (!ob) throw new Error("Transfer not found.");
+  if (ob.status === "settled") {
+    throw new Error("This transfer is already settled.");
+  }
+  const sender = getEntity(ob.from);
+  const recipient = getEntity(ob.to);
+  if (!sender || !recipient) throw new Error("Traveler missing.");
+
+  const considered = buildConsidered(
+    sender,
+    recipient,
+    ob.chosenRail ?? "claim_link",
+    ob.considered?.find((c) => c.chosen)?.railName ?? "",
+  );
+  const row = considered.find(
+    (c) => c.railName === railName || c.type === railName,
+  );
+  if (!row) throw new Error("That rail is not available on this corridor.");
+  if (!row.eligible) {
+    throw new Error(
+      `Recipient has no linked account — link ${primaryRail(recipient.country)} first, or keep the claim link.`,
+    );
   }
 
-  return getStore().netObligations;
+  const pick: RailPick = {
+    type: row.type,
+    railName: row.railName,
+    feeEstimatePct: row.feeEstimatePct,
+    timeEstimateHours: row.timeEstimateHours,
+  };
+  const cheapest = cheapestRail(
+    sender.country,
+    recipient.country,
+    recipient.linkedRailAliases.length > 0,
+  );
+  const reason =
+    pick.railName === cheapest.railName
+      ? `Cheapest eligible rail for ${sender.country}→${recipient.country}: ${pick.railName} at ${pick.feeEstimatePct}%.`
+      : `Manual override: ${pick.railName} at ${pick.feeEstimatePct}% (~${pick.timeEstimateHours}h) instead of ${cheapest.railName} at ${cheapest.feeEstimatePct}%.`;
+  applyPick(ob, sender, recipient, pick, reason);
+  const next = getNetObligation(obligationId);
+  if (!next) throw new Error("Transfer not found.");
+  return next;
+}
+
+/** Attach the country's primary rail so claim_link payouts can become local/linked. */
+export function linkRecipientAccount(entityId: string): Entity {
+  const ent = getEntity(entityId);
+  if (!ent) throw new Error("Traveler not found.");
+  if (ent.linkedRailAliases.length === 0) {
+    const rail = primaryRail(ent.country);
+    const alias = ent.contact.value || ent.id;
+    const updated = updateEntity(entityId, {
+      linkedRailAliases: [{ railType: rail, alias }],
+    });
+    if (!updated) throw new Error("Traveler not found.");
+  }
+  rerouteUnsettled({ to: entityId });
+  const latest = getEntity(entityId);
+  if (!latest) throw new Error("Traveler not found.");
+  return latest;
 }
 
 function buildConsidered(
@@ -100,11 +236,12 @@ function buildConsidered(
     {
       type: "claim_link",
       railName: "Claim Link",
-      feeEstimatePct: 1.0,
-      timeEstimateHours: 48,
+      feeEstimatePct: CLAIM_LINK_PICK.feeEstimatePct,
+      timeEstimateHours: CLAIM_LINK_PICK.timeEstimateHours,
       chosen: chosen === "claim_link",
+      eligible: true,
       note: hasAccount
-        ? "Recipient has a linked account, so a claim link isn't needed."
+        ? "Works without a linked account — slower and a 1% fee."
         : "Recipient has no linked account — the only way to pay them.",
     },
   ];
@@ -117,20 +254,20 @@ function buildConsidered(
       feeEstimatePct: o.feeEstimatePct,
       timeEstimateHours: o.timeEstimateHours,
       chosen: isChosen,
+      eligible: hasAccount,
       note: !hasAccount
         ? "Ineligible — recipient has no account on this rail."
         : isChosen
-          ? "Cheapest eligible option."
-          : `Evaluated: ${o.feeEstimatePct}% fee / ${o.timeEstimateHours}h — not cheapest.`,
+          ? "Selected."
+          : `${o.feeEstimatePct}% fee / ${o.timeEstimateHours}h.`,
     });
   }
   return list;
 }
 
 export function getRailTypesExercised(): RailType[] {
-  const store = getStore();
   const types = new Set<RailType>();
-  for (const ob of store.netObligations) {
+  for (const ob of getStore().netObligations) {
     if (ob.chosenRail) types.add(ob.chosenRail);
   }
   return Array.from(types);

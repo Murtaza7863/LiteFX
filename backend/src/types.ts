@@ -72,6 +72,7 @@ export interface RailConsideration {
   feeEstimatePct: number;
   timeEstimateHours: number;
   chosen: boolean;
+  eligible: boolean;
   note: string;
 }
 

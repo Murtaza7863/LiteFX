@@ -1,17 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import type { DebtEdge, Entity, NetObligation } from "../api/client";
 
+import { paymentSlip } from "../lib/paymentSlip";
 import { RAIL_META, countryFlag } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { RailIcon, IconX } from "./icons";
-
-// ──────────────────────────────────────────────
-// Obligation detail: shows the routing DECISION —
-// the rails the router evaluated (chosen vs
-// alternatives, with fee/time), plus the raw pairwise
-// debts that were consolidated into this transfer.
-// ──────────────────────────────────────────────
 
 interface Props {
   obligation: NetObligation;
@@ -19,6 +13,9 @@ interface Props {
   toEntity: Entity;
   debtEdges: DebtEdge[];
   onClose: () => void;
+  onOverride?: (railName: string) => void;
+  onLink?: () => void;
+  busy?: boolean;
 }
 
 export function ObligationDetail({
@@ -27,8 +24,14 @@ export function ObligationDetail({
   toEntity,
   debtEdges,
   onClose,
+  onOverride,
+  onLink,
+  busy = false,
 }: Props) {
   const meta = obligation.chosenRail ? RAIL_META[obligation.chosenRail] : null;
+  const slip = paymentSlip(obligation, fromEntity, toEntity);
+  const [copied, setCopied] = useState(false);
+  const canEdit = obligation.status !== "settled" && !busy;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -38,12 +41,21 @@ export function ObligationDetail({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Raw pairwise debts between these two parties (either direction).
   const consolidated = debtEdges.filter(
     (e) =>
       (e.from === obligation.from && e.to === obligation.to) ||
       (e.from === obligation.to && e.to === obligation.from),
   );
+
+  const copySlip = async () => {
+    try {
+      await navigator.clipboard.writeText(slip.text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <div
@@ -62,7 +74,6 @@ export function ObligationDetail({
           <IconX className="h-4 w-4" />
         </button>
 
-        {/* Header */}
         <div className="mb-4 flex items-center gap-3 pr-10">
           <Avatar id={fromEntity.id} name={fromEntity.name} size={36} />
           <span className="text-slate-500">→</span>
@@ -79,7 +90,6 @@ export function ObligationDetail({
           </div>
         </div>
 
-        {/* Amount + fee/time */}
         <div className="mb-4 grid grid-cols-3 gap-2">
           <div className="bg-black/25 border-white/[0.05] rounded-lg border p-3 text-center">
             <p className="text-slate-500 text-[10px] tracking-wide uppercase">
@@ -107,7 +117,22 @@ export function ObligationDetail({
           </div>
         </div>
 
-        {/* Routing reason */}
+        <div className="bg-black/25 border-white/[0.04] mb-4 rounded-lg border px-3 py-2.5">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <p className="text-slate-500 text-[10px] font-semibold tracking-wider uppercase">
+              Send instructions
+            </p>
+            <button
+              type="button"
+              onClick={() => void copySlip()}
+              className="text-slate-400 hover:text-slate-100 text-[11px] font-medium"
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <p className="text-slate-300 text-xs leading-relaxed">{slip.text}</p>
+        </div>
+
         {obligation.routingReason && (
           <div className="bg-black/25 border-white/[0.04] mb-4 rounded-lg border px-3 py-2.5">
             <p className="text-slate-500 mb-1 text-[10px] font-semibold tracking-wider uppercase">
@@ -119,22 +144,22 @@ export function ObligationDetail({
           </div>
         )}
 
-        {/* Considered rails */}
         {obligation.considered && obligation.considered.length > 0 && (
           <div className="mb-4">
             <p className="text-slate-500 mb-2 text-[10px] font-semibold tracking-wider uppercase">
-              Rails evaluated
+              Try another rail
             </p>
             <div className="space-y-1.5">
               {obligation.considered.map((c, i) => {
                 const m = RAIL_META[c.type];
+                const eligible = c.eligible !== false;
                 return (
                   <div
                     key={i}
                     className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
                       c.chosen
                         ? "border-[var(--text)]/25 bg-[var(--text)]/5"
-                        : "border-white/[0.06] bg-white/[0.02] opacity-70"
+                        : "border-white/[0.06] bg-white/[0.02]"
                     }`}
                   >
                     <span className={m?.text ?? "text-slate-400"}>
@@ -162,6 +187,24 @@ export function ObligationDetail({
                       <p className="text-slate-500 font-mono text-[10px]">
                         {c.timeEstimateHours}h
                       </p>
+                      {canEdit && !c.chosen && eligible && onOverride && (
+                        <button
+                          type="button"
+                          className="text-slate-200 mt-1 text-[10px] font-medium underline underline-offset-2"
+                          onClick={() => onOverride(c.railName)}
+                        >
+                          Use this
+                        </button>
+                      )}
+                      {canEdit && !c.chosen && !eligible && onLink && (
+                        <button
+                          type="button"
+                          className="mt-1 text-[10px] font-medium text-[#c4a574] underline underline-offset-2"
+                          onClick={onLink}
+                        >
+                          Link account
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -170,7 +213,6 @@ export function ObligationDetail({
           </div>
         )}
 
-        {/* Consolidated debts */}
         <div>
           <p className="text-slate-500 mb-2 text-[10px] font-semibold tracking-wider uppercase">
             Consolidated pairwise debts ({consolidated.length})

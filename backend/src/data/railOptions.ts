@@ -52,7 +52,7 @@ export interface RailPick {
   timeEstimateHours: number;
 }
 
-const CLAIM_LINK_PICK: RailPick = {
+export const CLAIM_LINK_PICK: RailPick = {
   type: "claim_link",
   railName: "Claim Link (recipient chooses payout)",
   feeEstimatePct: 1.0,
