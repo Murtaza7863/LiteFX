@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { ClaimDetails } from "../api/client";
 
 import { client } from "../api/client";
+import { claimUrl } from "../lib/urls";
 import { Avatar } from "./Avatar";
 import {
   IconLandmark,
@@ -47,6 +48,8 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [claimed, setClaimed] = useState(false);
 
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     client
       .getClaim(token)
@@ -59,6 +62,14 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
         setLoading(false);
       });
   }, [token]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const handleClaim = () => {
     if (!selectedPayout) return;
@@ -170,25 +181,26 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
             </div>
 
             {/* Real, shareable claim URL */}
-            <div className="bg-white/[0.03] border-white/[0.05] mb-5 flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
+            <div className="bg-white/[0.03] border-white/[0.05] mb-3 flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
               <span className="text-slate-500 truncate font-mono text-[11px]">
-                {typeof window !== "undefined"
-                  ? `${window.location.origin}/claim/${token.slice(0, 10)}…`
-                  : `/claim/${token.slice(0, 12)}…`}
+                {claimUrl(token)}
               </span>
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    const url = `${window.location.origin}/claim/${token}`;
-                    void navigator.clipboard.writeText(url);
+                    const url = claimUrl(token);
+                    void navigator.clipboard.writeText(url).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1600);
+                    });
                   }}
                   className="text-slate-400 hover:text-slate-200 text-[11px] font-medium"
                 >
-                  Copy
+                  {copied ? "Copied" : "Copy"}
                 </button>
                 <a
-                  href={`/claim/${token}`}
+                  href={claimUrl(token)}
                   target="_blank"
                   rel="noreferrer"
                   className="text-cyan-400 text-[11px] font-medium whitespace-nowrap hover:underline"
@@ -197,6 +209,10 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                 </a>
               </div>
             </div>
+
+            {details.link.status !== "claimed" &&
+              details.link.status !== "expired" &&
+              !claimed && <ClaimSendRow details={details} token={token} />}
 
             {claimed ? (
               <div className="bg-emerald-500/10 border-emerald-500/25 animate-scale-in rounded-2xl border p-5 text-center">
@@ -283,6 +299,54 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function ClaimSendRow({
+  details,
+  token,
+}: {
+  details: ClaimDetails;
+  token: string;
+}) {
+  const url = claimUrl(token);
+  const amount = `${details.obligation.amount.toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  })} ${details.obligation.settlementCurrency}`;
+  const name = details.recipient.name.trim().split(" ")[0];
+  const body = `Hi ${name}, you have ${amount} waiting on LiteFX. Claim it here (no account needed): ${url}`;
+  const encoded = encodeURIComponent(body);
+  const subject = encodeURIComponent(`LiteFX payout — ${amount}`);
+  const contact = details.recipient.contact;
+  const emailTo =
+    contact.type === "email" && contact.value.includes("@")
+      ? contact.value
+      : "";
+  const phoneDigits = (contact.value || "").replace(/\D/g, "");
+
+  return (
+    <div className="mb-5 flex flex-wrap gap-2">
+      <a
+        href={`mailto:${emailTo}?subject=${subject}&body=${encoded}`}
+        className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
+      >
+        Email
+      </a>
+      <a
+        href={`sms:${phoneDigits ? `+${phoneDigits}` : ""}?&body=${encoded}`}
+        className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
+      >
+        SMS
+      </a>
+      <a
+        href={`https://wa.me/${phoneDigits}?text=${encoded}`}
+        target="_blank"
+        rel="noreferrer"
+        className="chip bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-slate-100 border"
+      >
+        WhatsApp
+      </a>
     </div>
   );
 }

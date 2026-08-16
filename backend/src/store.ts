@@ -1,6 +1,13 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  renameSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   Entity,
   Expense,
@@ -18,19 +25,21 @@ import { toUsd } from "./types.js";
 import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
 
 // ──────────────────────────────────────────────
-// File-backed store. State is persisted to a JSON
-// file so the app behaves like a real working app
-// (data survives restarts) rather than a demo that
-// resets on every reload.
+// File-backed store. Users each own a trip. Auth
+// context (AsyncLocalStorage) selects which trip
+// getStore() returns so requests cannot see each
+// other's expenses.
 // ──────────────────────────────────────────────
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
+const DEFAULT_OWNER = "user-local";
+const als = new AsyncLocalStorage<string>();
 
 function dbFile(): string {
-  return process.env.LITEFX_DB_PATH
-    ? path.resolve(process.env.LITEFX_DB_PATH)
-    : path.join(DATA_DIR, "db.json");
+  const envPath =
+    typeof process !== "undefined" ? process.env.LITEFX_DB_PATH : undefined;
+  return envPath ? path.resolve(envPath) : path.join(DATA_DIR, "db.json");
 }
 
 export interface StoreState {
@@ -47,6 +56,35 @@ export interface StoreState {
   complianceRan: boolean;
   reconciliationRan: boolean;
   vendorSummary: VendorSummaryRow[];
+}
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  name: string;
+  passwordHash: string;
+  createdAt: string;
+}
+
+export interface SessionRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface PublicUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+interface AppState {
+  version: 2;
+  users: UserRecord[];
+  sessions: SessionRecord[];
+  trips: Record<string, StoreState>;
 }
 
 function deriveDebtEdges(expenses: Expense[]): DebtEdge[] {
@@ -138,67 +176,223 @@ function sampleState(): StoreState {
   };
 }
 
-let state: StoreState | null = null;
+let app: AppState | null = null;
+
+function emptyApp(): AppState {
+  return { version: 2, users: [], sessions: [], trips: {} };
+}
+
+function ownerId(): string {
+  return als.getStore() ?? DEFAULT_OWNER;
+}
+
+function ensureTrip(uid: string): StoreState {
+  if (!app) app = emptyApp();
+  if (!app.trips[uid]) app.trips[uid] = freshState();
+  return app.trips[uid];
+}
 
 function save(): void {
-  if (!state) return;
+  if (!app) return;
   try {
     const file = dbFile();
     const dir = path.dirname(file);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(file, JSON.stringify(state, null, 2));
+    const pid =
+      typeof process !== "undefined" && process.pid ? process.pid : "web";
+    const tmp = `${file}.${pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(app, null, 2));
+    renameSync(tmp, file);
   } catch (e) {
     console.warn("[store] failed to persist:", (e as Error).message);
   }
 }
 
-function load(): StoreState | null {
+function coerceTrip(parsed: Partial<StoreState>): StoreState {
+  const base = freshState();
+  const merged: StoreState = {
+    ...base,
+    ...parsed,
+    entities: parsed.entities ?? [],
+    expenses: parsed.expenses ?? [],
+    debtEdges: parsed.debtEdges ?? [],
+    netObligations: parsed.netObligations ?? [],
+    claimLinks: parsed.claimLinks ?? [],
+    complianceFlags: parsed.complianceFlags ?? [],
+    invoices: parsed.invoices ?? [],
+    reconciliationResults: parsed.reconciliationResults ?? [],
+    ledger: parsed.ledger ?? [],
+    nettingSummary: parsed.nettingSummary ?? null,
+    complianceRan: !!parsed.complianceRan,
+    reconciliationRan: !!parsed.reconciliationRan,
+    vendorSummary: parsed.vendorSummary ?? [],
+  };
+  const repriced = deriveDebtEdges(merged.expenses);
+  const oldSum = (parsed.debtEdges ?? []).reduce(
+    (s, e) => s + (e.amountUsd ?? 0),
+    0,
+  );
+  const newSum = repriced.reduce((s, e) => s + e.amountUsd, 0);
+  merged.debtEdges = repriced;
+  if (Math.abs(oldSum - newSum) > 0.05) {
+    merged.netObligations = [];
+    merged.nettingSummary = null;
+    merged.claimLinks = [];
+    merged.ledger = [];
+    merged.complianceFlags = [];
+    merged.complianceRan = false;
+    merged.reconciliationResults = [];
+    merged.reconciliationRan = false;
+    merged.vendorSummary = [];
+  }
+  return merged;
+}
+
+function load(): AppState | null {
   try {
     const file = dbFile();
     if (!existsSync(file)) return null;
     const raw = readFileSync(file, "utf8");
-    const parsed = JSON.parse(raw) as Partial<StoreState>;
-    if (!parsed.entities || !parsed.expenses) return null;
-    const base = freshState();
-    const merged: StoreState = {
-      ...base,
-      ...parsed,
-      entities: parsed.entities ?? [],
-      expenses: parsed.expenses ?? [],
-      debtEdges: parsed.debtEdges ?? [],
-      netObligations: parsed.netObligations ?? [],
-      claimLinks: parsed.claimLinks ?? [],
-      complianceFlags: parsed.complianceFlags ?? [],
-      invoices: parsed.invoices ?? [],
-      reconciliationResults: parsed.reconciliationResults ?? [],
-      ledger: parsed.ledger ?? [],
-      nettingSummary: parsed.nettingSummary ?? null,
-      complianceRan: !!parsed.complianceRan,
-      reconciliationRan: !!parsed.reconciliationRan,
-      vendorSummary: parsed.vendorSummary ?? [],
-    };
-    // Reprice IOUs with the current FX table (live rates may have changed).
-    merged.debtEdges = deriveDebtEdges(merged.expenses);
-    return merged;
+    const parsed = JSON.parse(raw) as Partial<AppState> & Partial<StoreState>;
+    if (
+      parsed.version === 2 &&
+      parsed.trips &&
+      typeof parsed.trips === "object"
+    ) {
+      const trips: Record<string, StoreState> = {};
+      for (const [id, trip] of Object.entries(parsed.trips)) {
+        trips[id] = coerceTrip(trip);
+      }
+      return {
+        version: 2,
+        users: Array.isArray(parsed.users) ? parsed.users : [],
+        sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+        trips,
+      };
+    }
+    if (parsed.entities || parsed.expenses) {
+      return {
+        version: 2,
+        users: [],
+        sessions: [],
+        trips: { [DEFAULT_OWNER]: coerceTrip(parsed) },
+      };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
 export function initStore(): void {
-  if (state) return;
-  state = load() ?? freshState();
+  if (app) return;
+  app = load() ?? emptyApp();
   save();
+}
+
+export function getApp(): AppState {
+  initStore();
+  return app!;
 }
 
 export function getStore(): StoreState {
   initStore();
-  return state!;
+  return ensureTrip(ownerId());
+}
+
+export function runAsUser<T>(userId: string, fn: () => T): T {
+  return als.run(userId, fn);
 }
 
 export function seedStore(): void {
-  state = sampleState();
+  initStore();
+  app!.trips[ownerId()] = sampleState();
   save();
+}
+
+export function resetApp(): void {
+  app = emptyApp();
+  save();
+}
+
+export function toPublicUser(u: UserRecord): PublicUser {
+  return { id: u.id, email: u.email, name: u.name };
+}
+
+export function findUserByEmail(email: string): UserRecord | undefined {
+  return getApp().users.find((u) => u.email === email);
+}
+
+export function findUserById(id: string): UserRecord | undefined {
+  return getApp().users.find((u) => u.id === id);
+}
+
+export function addUser(user: UserRecord): void {
+  const st = getApp();
+  st.users.push(user);
+  const orphan = st.trips[DEFAULT_OWNER];
+  const orphanHasData =
+    orphan && (orphan.entities.length > 0 || orphan.expenses.length > 0);
+  if (st.users.length === 1 && orphanHasData) {
+    st.trips[user.id] = orphan;
+    delete st.trips[DEFAULT_OWNER];
+  } else if (!st.trips[user.id]) {
+    st.trips[user.id] = freshState();
+  }
+  save();
+}
+
+export function addSession(session: SessionRecord): void {
+  const st = getApp();
+  const existing = st.sessions.filter((s) => s.userId === session.userId);
+  if (existing.length >= 10) {
+    existing
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(0, existing.length - 9)
+      .forEach((old) => {
+        st.sessions = st.sessions.filter((s) => s.id !== old.id);
+      });
+  }
+  st.sessions.push(session);
+  save();
+}
+
+export function findSessionByTokenHash(
+  tokenHash: string,
+): SessionRecord | undefined {
+  const now = Date.now();
+  return getApp().sessions.find(
+    (s) => s.tokenHash === tokenHash && new Date(s.expiresAt).getTime() > now,
+  );
+}
+
+export function deleteSessionByTokenHash(tokenHash: string): void {
+  const st = getApp();
+  st.sessions = st.sessions.filter((s) => s.tokenHash !== tokenHash);
+  save();
+}
+
+export function deleteSessionsForUser(userId: string): void {
+  const st = getApp();
+  st.sessions = st.sessions.filter((s) => s.userId !== userId);
+  save();
+}
+
+export function pruneExpiredSessions(): void {
+  const st = getApp();
+  const now = Date.now();
+  const next = st.sessions.filter((s) => new Date(s.expiresAt).getTime() > now);
+  if (next.length !== st.sessions.length) {
+    st.sessions = next;
+    save();
+  }
+}
+
+export function findClaimOwner(token: string): string | undefined {
+  initStore();
+  for (const [uid, trip] of Object.entries(app!.trips)) {
+    if (trip.claimLinks.some((c) => c.token === token)) return uid;
+  }
 }
 
 // Convenience getters
@@ -220,14 +414,18 @@ export function updateNetObligation(
 }
 
 export function getClaimLink(token: string): ClaimLink | undefined {
-  return getStore().claimLinks.find((c) => c.token === token);
+  initStore();
+  for (const trip of Object.values(app!.trips)) {
+    const cl = trip.claimLinks.find((c) => c.token === token);
+    if (cl) return cl;
+  }
 }
 
 export function updateClaimLink(
   token: string,
   patch: Partial<ClaimLink>,
 ): void {
-  const cl = getStore().claimLinks.find((c) => c.token === token);
+  const cl = getClaimLink(token);
   if (cl) Object.assign(cl, patch);
   save();
 }
@@ -299,6 +497,21 @@ function invalidateDerived(): void {
   st.ledger = [];
 }
 
+/** Wipe engine outputs (not invoices) before a fresh netting pass. */
+export function resetEngineOutputs(): void {
+  const st = getStore();
+  st.netObligations = [];
+  st.nettingSummary = null;
+  st.complianceFlags = [];
+  st.complianceRan = false;
+  st.reconciliationResults = [];
+  st.reconciliationRan = false;
+  st.vendorSummary = [];
+  st.claimLinks = [];
+  st.ledger = [];
+  save();
+}
+
 export function addEntity(e: Entity): void {
   getStore().entities.push(e);
   invalidateDerived();
@@ -310,6 +523,55 @@ export function addExpense(exp: Expense): void {
   getStore().debtEdges = deriveDebtEdges(getStore().expenses);
   invalidateDerived();
   save();
+}
+
+export function updateEntity(
+  id: string,
+  patch: Partial<
+    Pick<Entity, "name" | "country" | "contact" | "linkedRailAliases">
+  >,
+): Entity | null {
+  const st = getStore();
+  const e = st.entities.find((x) => x.id === id);
+  if (!e) return null;
+  const nextCountry = patch.country ?? e.country;
+  const nextRails = patch.linkedRailAliases ?? e.linkedRailAliases;
+  const routingChanged =
+    nextCountry !== e.country ||
+    JSON.stringify(nextRails) !== JSON.stringify(e.linkedRailAliases);
+  if (patch.name !== undefined) e.name = patch.name;
+  if (patch.country !== undefined) e.country = patch.country;
+  if (patch.contact !== undefined) e.contact = patch.contact;
+  if (patch.linkedRailAliases !== undefined)
+    e.linkedRailAliases = patch.linkedRailAliases;
+  if (patch.name && st.nettingSummary) {
+    for (const b of st.nettingSummary.balances) {
+      if (b.entityId === id) b.entityName = patch.name;
+    }
+  }
+  if (routingChanged) invalidateDerived();
+  save();
+  return e;
+}
+
+export function updateExpense(id: string, next: Expense): Expense | null {
+  const st = getStore();
+  const i = st.expenses.findIndex((e) => e.id === id);
+  if (i < 0) return null;
+  const prev = st.expenses[i];
+  const moneyChanged =
+    prev.payerId !== next.payerId ||
+    prev.amount !== next.amount ||
+    prev.currency !== next.currency ||
+    prev.participantIds.join() !== next.participantIds.join() ||
+    JSON.stringify(prev.split ?? null) !== JSON.stringify(next.split ?? null);
+  st.expenses[i] = next;
+  if (moneyChanged) {
+    st.debtEdges = deriveDebtEdges(st.expenses);
+    invalidateDerived();
+  }
+  save();
+  return st.expenses[i];
 }
 
 export function deleteExpense(id: string): boolean {
@@ -339,6 +601,7 @@ export function deleteEntity(id: string): boolean {
 
 // Start from a blank slate (a real tool, not a fixed demo).
 export function clearStore(): void {
-  state = freshState();
+  initStore();
+  app!.trips[ownerId()] = freshState();
   save();
 }

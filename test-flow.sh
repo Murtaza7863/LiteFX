@@ -83,7 +83,7 @@ echo ""
 echo "=== 6. Claim with payout method ==="
 curl -s -X POST $BASE/claim/$TOKEN/claim \
   -H "Content-Type: application/json" \
-  -d '{"payoutMethod": "Local bank transfer (provide IBAN / account no.)"}' | python3 -c "
+  -d '{"payoutMethod": "GrabPay"}' | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 print(f'Success: {d[\"success\"]}')

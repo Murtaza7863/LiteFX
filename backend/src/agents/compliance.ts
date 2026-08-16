@@ -44,7 +44,7 @@ export function evaluateCompliance(): ComplianceFlag[] {
     const obFlags: ComplianceFlag[] = [];
 
     // Check 1 — per-corridor limit exceeded
-    if (limit !== undefined && ob.amountUsd > limit) {
+    if (ob.amountUsd > limit) {
       const f: ComplianceFlag = {
         obligationId: ob.id,
         type: "limit_exceeded",

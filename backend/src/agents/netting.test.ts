@@ -178,3 +178,37 @@ test("empty trip produces no obligations", () => {
   assert.equal(result.netEdgeCount, 0);
   assert.equal(result.obligations.length, 0);
 });
+
+test("edges to unknown people are ignored so balances still close", () => {
+  clearStore();
+  const st = getStore();
+  st.entities = [
+    traveler("a", "A", "US", "zelle"),
+    traveler("b", "B", "US", "zelle"),
+  ];
+  st.debtEdges = [
+    {
+      id: "e1",
+      from: "a",
+      to: "b",
+      amount: 40,
+      currency: "USD",
+      amountUsd: 40,
+      sourceExpenseId: "x",
+    },
+    {
+      id: "e2",
+      from: "ghost",
+      to: "b",
+      amount: 99,
+      currency: "USD",
+      amountUsd: 99,
+      sourceExpenseId: "y",
+    },
+  ];
+  const result = runNetting();
+  assert.equal(result.netEdgeCount, 1);
+  assert.equal(result.obligations[0].from, "a");
+  assert.equal(result.obligations[0].to, "b");
+  assert.equal(result.obligations[0].amountUsd, 40);
+});

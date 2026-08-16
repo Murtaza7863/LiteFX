@@ -1,14 +1,17 @@
 import type { Entity, Expense } from "../api/client";
 
+import { categoryLabel } from "../lib/countries";
 import { COUNTRY_FLAGS, COUNTRY_NAMES } from "../lib/theme";
 import { Avatar } from "./Avatar";
-import { IconX } from "./icons";
+import { IconPencil, IconX } from "./icons";
 
 interface Props {
   entities: Entity[];
   expenses: Expense[];
   onDeleteTraveler?: (id: string) => void;
   onDeleteExpense?: (id: string) => void;
+  onEditTraveler?: (id: string) => void;
+  onEditExpense?: (id: string) => void;
 }
 
 export function ScenarioOverview({
@@ -16,6 +19,8 @@ export function ScenarioOverview({
   expenses,
   onDeleteTraveler,
   onDeleteExpense,
+  onEditTraveler,
+  onEditExpense,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -61,16 +66,28 @@ export function ScenarioOverview({
                     )}
                   </p>
                 </div>
-                {onDeleteTraveler && (
-                  <button
-                    type="button"
-                    onClick={() => onDeleteTraveler(e.id)}
-                    className="text-slate-600 hover:text-red-300 hover:bg-red-500/10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors"
-                    title="Remove traveler"
-                  >
-                    <IconX className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                <div className="flex shrink-0 items-center">
+                  {onEditTraveler && (
+                    <button
+                      type="button"
+                      onClick={() => onEditTraveler(e.id)}
+                      className="text-slate-600 hover:text-cyan-300 hover:bg-cyan-500/10 flex h-7 w-7 items-center justify-center rounded-full transition-colors"
+                      title="Edit traveler"
+                    >
+                      <IconPencil className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  {onDeleteTraveler && (
+                    <button
+                      type="button"
+                      onClick={() => onDeleteTraveler(e.id)}
+                      className="text-slate-600 hover:text-red-300 hover:bg-red-500/10 flex h-7 w-7 items-center justify-center rounded-full transition-colors"
+                      title="Remove traveler"
+                    >
+                      <IconX className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -79,16 +96,18 @@ export function ScenarioOverview({
 
       {expenses.length > 0 && (
         <div className="bg-white/[0.03] border-white/[0.06] overflow-hidden rounded-xl border">
-          <div className="max-h-72 overflow-y-auto">
+          <div className="max-h-72 overflow-auto">
             <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-[#0b1120]/90 backdrop-blur">
+              <thead className="sticky top-0 bg-[var(--header-bg)] backdrop-blur">
                 <tr className="text-slate-500 text-left text-[11px] tracking-wider uppercase">
                   <th className="px-3.5 py-2.5 font-medium">Expense</th>
                   <th className="px-3.5 py-2.5 font-medium">Paid by</th>
                   <th className="px-3.5 py-2.5 text-right font-medium">
                     Amount
                   </th>
-                  {onDeleteExpense && <th className="w-10" />}
+                  {(onDeleteExpense || onEditExpense) && (
+                    <th className="w-16" />
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -104,9 +123,11 @@ export function ScenarioOverview({
                           {exp.description}
                         </p>
                         <p className="text-slate-600 text-[11px]">
+                          {categoryLabel(exp.category)}
+                          {" · "}
                           {exp.split && exp.split.mode !== "equal"
                             ? exp.split.mode === "percent"
-                              ? `custom % split · ${exp.participantIds.length} people`
+                              ? `custom % · ${exp.participantIds.length} people`
                               : `custom amounts · ${exp.participantIds.length} people`
                             : `split ${exp.participantIds.length} ways`}
                         </p>
@@ -125,16 +146,28 @@ export function ScenarioOverview({
                         {exp.amount.toLocaleString()}{" "}
                         <span className="text-slate-500">{exp.currency}</span>
                       </td>
-                      {onDeleteExpense && (
-                        <td className="py-2.5 pr-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => onDeleteExpense(exp.id)}
-                            className="text-slate-600 hover:text-red-300 hover:bg-red-500/10 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors"
-                            title="Remove expense"
-                          >
-                            <IconX className="h-3 w-3" />
-                          </button>
+                      {(onDeleteExpense || onEditExpense) && (
+                        <td className="py-2.5 pr-2 text-right whitespace-nowrap">
+                          {onEditExpense && (
+                            <button
+                              type="button"
+                              onClick={() => onEditExpense(exp.id)}
+                              className="text-slate-600 hover:text-cyan-300 hover:bg-cyan-500/10 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors"
+                              title="Edit expense"
+                            >
+                              <IconPencil className="h-3 w-3" />
+                            </button>
+                          )}
+                          {onDeleteExpense && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteExpense(exp.id)}
+                              className="text-slate-600 hover:text-red-300 hover:bg-red-500/10 inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors"
+                              title="Remove expense"
+                            >
+                              <IconX className="h-3 w-3" />
+                            </button>
+                          )}
                         </td>
                       )}
                     </tr>

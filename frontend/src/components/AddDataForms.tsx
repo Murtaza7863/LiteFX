@@ -1,46 +1,102 @@
 import { useState, useEffect, useRef } from "react";
 
-import type { Entity } from "../api/client";
+import type { Entity, Expense } from "../api/client";
 
 import { client } from "../api/client";
 import {
   COUNTRIES,
   CURRENCY_OPTIONS,
+  EXPENSE_CATEGORIES,
   flagFromCode,
   railsFor,
   primaryRail,
+  currencyFor,
 } from "../lib/countries";
-import { IconPlus } from "./icons";
+import { IconPlus, IconDownload, IconMore } from "./icons";
 
-const inputCls =
-  "w-full rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-400/50";
+const inputCls = "input-field";
 
 interface Props {
   entities: Entity[];
+  expenses: Expense[];
   expenseCount: number;
   onAdded: (msg: string) => void;
   onClear: () => void;
   onLoadSample: () => void;
   travelerSignal?: number;
+  editEntity?: Entity | null;
+  editExpense?: Expense | null;
+  onCancelEdit?: () => void;
+}
+
+function downloadCsv(entities: Entity[], expenses: Expense[]) {
+  const nameOf = (id: string) =>
+    entities.find((e) => e.id === id)?.name.trim() ?? id;
+  const rows = [
+    [
+      "Description",
+      "Category",
+      "Paid by",
+      "Amount",
+      "Currency",
+      "Participants",
+      "Split",
+    ],
+    ...expenses.map((exp) => [
+      exp.description,
+      exp.category,
+      nameOf(exp.payerId),
+      String(exp.amount),
+      exp.currency,
+      exp.participantIds.map(nameOf).join("; "),
+      exp.split?.mode ?? "equal",
+    ]),
+  ];
+  const csv = rows
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "litefx-trip.csv";
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function AddDataForms({
   entities,
+  expenses,
   expenseCount,
   onAdded,
   onClear,
   onLoadSample,
   travelerSignal = 0,
+  editEntity = null,
+  editExpense = null,
+  onCancelEdit,
 }: Props) {
   const [open, setOpen] = useState<null | "traveler" | "expense">(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (travelerSignal > 0) {
+    if (!menuOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (travelerSignal > 0 && !editEntity && !editExpense) {
       setOpen("traveler");
       rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [travelerSignal]);
+  }, [travelerSignal, editEntity, editExpense]);
 
   const [tName, setTName] = useState("");
   const [tCountry, setTCountry] = useState("SG");
@@ -51,6 +107,7 @@ export function AddDataForms({
   const [eDesc, setEDesc] = useState("");
   const [eAmount, setEAmount] = useState("");
   const [eCurrency, setECurrency] = useState("USD");
+  const [eCategory, setECategory] = useState("general");
   const [ePayer, setEPayer] = useState("");
   const [eAll, setEAll] = useState(true);
   const [eParticipants, setEParticipants] = useState<string[]>([]);
@@ -59,25 +116,108 @@ export function AddDataForms({
   );
   const [eParts, setEParts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!editEntity) return;
+    setOpen("traveler");
+    setTName(editEntity.name);
+    setTCountry(editEntity.country);
+    setTContact(editEntity.contact.value ?? "");
+    setTHasAccount(editEntity.linkedRailAliases.length > 0);
+    setTRail(
+      editEntity.linkedRailAliases[0]?.railType ||
+        primaryRail(editEntity.country),
+    );
+    setFormError(null);
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editEntity]);
+
+  useEffect(() => {
+    if (!editExpense) return;
+    setOpen("expense");
+    setEDesc(editExpense.description);
+    setEAmount(String(editExpense.amount));
+    setECurrency(editExpense.currency);
+    setECategory(editExpense.category || "general");
+    setEPayer(editExpense.payerId);
+    const allIds = entities
+      .map((e) => e.id)
+      .sort()
+      .join();
+    const partIds = [...editExpense.participantIds].sort().join();
+    setEAll(allIds === partIds || editExpense.participantIds.length === 0);
+    setEParticipants(editExpense.participantIds);
+    setESplitMode(editExpense.split?.mode ?? "equal");
+    const parts: Record<string, string> = {};
+    for (const [k, v] of Object.entries(editExpense.split?.parts ?? {})) {
+      parts[k] = String(v);
+    }
+    setEParts(parts);
+    setFormError(null);
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [editExpense, entities]);
+
+  useEffect(() => {
+    if (editExpense || !ePayer) return;
+    const payer = entities.find((e) => e.id === ePayer);
+    if (payer) setECurrency(currencyFor(payer.country));
+  }, [ePayer, editExpense, entities]);
+
+  const resetTravelerForm = () => {
+    setTName("");
+    setTContact("");
+    setTHasAccount(true);
+  };
+
+  const resetExpenseForm = () => {
+    setEDesc("");
+    setEAmount("");
+    setEParts({});
+    setESplitMode("equal");
+    setECategory("general");
+    setEAll(true);
+  };
+
+  const closeForms = () => {
+    setOpen(null);
+    onCancelEdit?.();
+  };
 
   const submitTraveler = async () => {
     if (!tName.trim()) return;
     setBusy(true);
+    setFormError(null);
     try {
-      await client.addEntity({
-        name: tName.trim(),
-        country: tCountry,
-        railType: tHasAccount ? tRail : undefined,
-        contact: tContact.trim()
-          ? tContact.includes("@")
-            ? { type: "email", value: tContact.trim() }
-            : { type: "phone", value: tContact.trim() }
-          : undefined,
-      });
-      setTName("");
-      setTContact("");
-      onAdded(`Added traveler ${tName.trim()}`);
-      setOpen(null);
+      const name = tName.trim();
+      const contact = tContact.trim()
+        ? tContact.includes("@")
+          ? { type: "email" as const, value: tContact.trim() }
+          : { type: "phone" as const, value: tContact.trim() }
+        : { type: "email" as const, value: "" };
+      if (editEntity) {
+        await client.updateEntity(editEntity.id, {
+          name,
+          country: tCountry,
+          railType: tHasAccount ? tRail : null,
+          contact,
+        });
+        resetTravelerForm();
+        onAdded(`Updated ${name}`);
+        closeForms();
+      } else {
+        await client.addEntity({
+          name,
+          country: tCountry,
+          railType: tHasAccount ? tRail : undefined,
+          contact: contact.value ? contact : undefined,
+        });
+        resetTravelerForm();
+        onAdded(`Added traveler ${name}`);
+        setOpen(null);
+      }
+    } catch (e) {
+      setFormError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -87,6 +227,7 @@ export function AddDataForms({
     const amt = parseFloat(eAmount);
     if (!ePayer || !(amt > 0)) return;
     setBusy(true);
+    setFormError(null);
     try {
       const partList = eAll ? entities.map((e) => e.id) : eParticipants;
       if (!eAll && partList.length === 0) return;
@@ -97,20 +238,31 @@ export function AddDataForms({
           if (v > 0) parts[pid] = v;
         }
       }
-      await client.addExpense({
+      const payload = {
         payerId: ePayer,
         participantIds: partList,
         amount: amt,
         currency: eCurrency,
         description: eDesc.trim() || "Custom expense",
-        split: eSplitMode !== "equal" ? { mode: eSplitMode, parts } : undefined,
-      });
-      setEDesc("");
-      setEAmount("");
-      setEParts({});
-      setESplitMode("equal");
-      onAdded("Added expense — debts recomputed");
-      setOpen(null);
+        category: eCategory,
+        split:
+          eSplitMode !== "equal"
+            ? { mode: eSplitMode, parts }
+            : { mode: "equal" as const },
+      };
+      if (editExpense) {
+        await client.updateExpense(editExpense.id, payload);
+        resetExpenseForm();
+        onAdded("Updated expense — debts recomputed");
+        closeForms();
+      } else {
+        await client.addExpense(payload);
+        resetExpenseForm();
+        onAdded("Added expense — debts recomputed");
+        setOpen(null);
+      }
+    } catch (e) {
+      setFormError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -119,6 +271,8 @@ export function AddDataForms({
   const partEntities = eAll
     ? entities
     : entities.filter((en) => eParticipants.includes(en.id));
+
+  const editing = !!(editEntity || editExpense);
 
   return (
     <div ref={rootRef} className="space-y-3">
@@ -129,27 +283,66 @@ export function AddDataForms({
             {entities.length} traveler{entities.length === 1 ? "" : "s"} ·{" "}
             {expenseCount} expense{expenseCount === 1 ? "" : "s"}
           </p>
-          <div className="mt-1.5 flex gap-3">
-            <button
-              type="button"
-              onClick={onClear}
-              className="text-slate-500 hover:text-red-300 text-[11px] underline-offset-2 transition-colors hover:underline"
-            >
-              Clear all
-            </button>
-            <button
-              type="button"
-              onClick={onLoadSample}
-              className="text-slate-500 hover:text-cyan-300 text-[11px] underline-offset-2 transition-colors hover:underline"
-            >
-              Load sample
-            </button>
-          </div>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div ref={menuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="btn-ghost !px-2 !py-1.5"
+              title="Trip actions"
+              aria-expanded={menuOpen}
+            >
+              <IconMore className="h-4 w-4" />
+            </button>
+            {menuOpen && (
+              <div className="glass-strong animate-scale-in absolute right-0 z-20 mt-1 w-44 overflow-hidden rounded-xl py-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onLoadSample();
+                  }}
+                  className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm"
+                >
+                  Load sample
+                </button>
+                {expenses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      downloadCsv(entities, expenses);
+                    }}
+                    className="hover:bg-white/[0.05] text-slate-300 flex w-full items-center gap-2 px-3 py-2 text-left text-sm"
+                  >
+                    <IconDownload className="h-3.5 w-3.5" />
+                    Export CSV
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onClear();
+                  }}
+                  className="hover:bg-white/[0.05] text-red-300 block w-full px-3 py-2 text-left text-sm"
+                >
+                  Clear all
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
-            onClick={() => setOpen(open === "traveler" ? null : "traveler")}
+            onClick={() => {
+              if (open === "traveler" && !editEntity) {
+                setOpen(null);
+                return;
+              }
+              onCancelEdit?.();
+              setOpen("traveler");
+            }}
             className={`btn-ghost !px-3 !py-1.5 text-xs ${
               open === "traveler" ? "bg-white/[0.08]" : ""
             }`}
@@ -158,8 +351,19 @@ export function AddDataForms({
           </button>
           <button
             type="button"
-            onClick={() => setOpen(open === "expense" ? null : "expense")}
+            onClick={() => {
+              if (entities.length === 0) return;
+              if (open === "expense" && !editExpense) {
+                setOpen(null);
+                return;
+              }
+              onCancelEdit?.();
+              setOpen("expense");
+            }}
             disabled={entities.length === 0}
+            title={
+              entities.length === 0 ? "Add a traveler first" : "Add an expense"
+            }
             className={`btn-ghost !px-3 !py-1.5 text-xs ${
               open === "expense" ? "bg-white/[0.08]" : ""
             }`}
@@ -169,8 +373,15 @@ export function AddDataForms({
         </div>
       </div>
 
+      {formError && <p className="text-red-300 text-xs">{formError}</p>}
+
       {open === "traveler" && (
         <div className="bg-white/[0.03] border-white/[0.06] animate-fade-in grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+          {editEntity && (
+            <p className="text-cyan-300/90 text-[11px] sm:col-span-2">
+              Editing {editEntity.name.trim()}
+            </p>
+          )}
           <input
             className={inputCls}
             placeholder="Name"
@@ -221,14 +432,23 @@ export function AddDataForms({
           ) : (
             <div className="hidden sm:block" />
           )}
-          <div className="sm:col-span-2">
+          <div className="flex gap-2 sm:col-span-2">
+            {editing && (
+              <button
+                type="button"
+                onClick={closeForms}
+                className="btn-ghost flex-1"
+              >
+                Cancel
+              </button>
+            )}
             <button
               type="button"
               onClick={submitTraveler}
               disabled={busy || !tName.trim()}
-              className="btn-primary w-full"
+              className="btn-primary flex-1"
             >
-              Add traveler
+              {editEntity ? "Save traveler" : "Add traveler"}
             </button>
           </div>
         </div>
@@ -236,6 +456,11 @@ export function AddDataForms({
 
       {open === "expense" && (
         <div className="bg-white/[0.03] border-white/[0.06] animate-fade-in grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+          {editExpense && (
+            <p className="text-cyan-300/90 text-[11px] sm:col-span-2">
+              Editing expense
+            </p>
+          )}
           <input
             className={inputCls}
             placeholder="Description (e.g. Dinner)"
@@ -265,6 +490,17 @@ export function AddDataForms({
           </div>
           <select
             className={inputCls}
+            value={eCategory}
+            onChange={(e) => setECategory(e.target.value)}
+          >
+            {EXPENSE_CATEGORIES.map((c) => (
+              <option key={c.id} value={c.id} className="bg-slate-900">
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className={inputCls}
             value={ePayer}
             onChange={(e) => setEPayer(e.target.value)}
           >
@@ -277,7 +513,7 @@ export function AddDataForms({
               </option>
             ))}
           </select>
-          <label className="text-slate-300 flex items-center gap-2 text-sm">
+          <label className="text-slate-300 flex items-center gap-2 text-sm sm:col-span-2">
             <input
               type="checkbox"
               checked={eAll}
@@ -359,7 +595,16 @@ export function AddDataForms({
             </div>
           )}
 
-          <div className="sm:col-span-2">
+          <div className="flex gap-2 sm:col-span-2">
+            {editing && (
+              <button
+                type="button"
+                onClick={closeForms}
+                className="btn-ghost flex-1"
+              >
+                Cancel
+              </button>
+            )}
             <button
               type="button"
               onClick={submitExpense}
@@ -369,9 +614,9 @@ export function AddDataForms({
                 !(parseFloat(eAmount) > 0) ||
                 (!eAll && eParticipants.length === 0)
               }
-              className="btn-primary w-full"
+              className="btn-primary flex-1"
             >
-              Add expense
+              {editExpense ? "Save expense" : "Add expense"}
             </button>
           </div>
         </div>

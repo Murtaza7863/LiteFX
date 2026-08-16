@@ -212,8 +212,10 @@ export const CORRIDOR_LIMITS: Record<string, number> = {
   "DE->TH": 8000,
 };
 
-export function corridorLimit(from: string, to: string): number | undefined {
-  return CORRIDOR_LIMITS[`${from}->${to}`];
+export function corridorLimit(from: string, to: string): number {
+  const explicit = CORRIDOR_LIMITS[`${from}->${to}`];
+  if (explicit !== undefined) return explicit;
+  return from === to ? 20000 : 8000;
 }
 
 export const FREQUENCY_THRESHOLD = 3;

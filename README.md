@@ -18,12 +18,12 @@ Open http://localhost:5173 in your browser.
 
 ## Deploy
 
-LiteFX runs as a **single web service** that serves both the API and the built
-frontend on one URL, so it deploys cleanly to any always-on host (the engine is
-stateful, so serverless/static hosts like GitHub Pages or Vercel functions won't
-keep its state).
+**GitHub Pages (same host as Plotline):** pushes to `main` publish the app at
+https://murtaza7863.github.io/LiteFX/ — the engine runs in the browser (trip
+data stays on that device). Open that URL, then **Continue as demo**.
 
-**Render (one click):** the repo includes a `render.yaml` blueprint.
+**Render / VPS:** LiteFX can also run as a **single web service** (API + built
+frontend) if you want a shared server-side store.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy/repo/Murtaza7863/LiteFX)
 

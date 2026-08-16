@@ -52,7 +52,7 @@ export function ReconciliationView({
 }: Props) {
   if (results.length === 0) {
     return (
-      <div className="glass text-slate-500 rounded-2xl p-8 text-center text-sm">
+      <div className="glass text-slate-500 rounded-xl p-6 text-center text-sm">
         Run reconciliation to see invoice matching.
       </div>
     );
@@ -62,38 +62,46 @@ export function ReconciliationView({
     <div className="space-y-5">
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Vendor summary */}
-        <div className="glass animate-fade-in-up overflow-hidden rounded-2xl">
+        <div className="bg-black/20 border-white/[0.06] animate-fade-in-up overflow-hidden rounded-xl border">
           <div className="border-white/[0.06] border-b px-4 py-3">
             <h4 className="section-title">Net Settlement Due</h4>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-slate-500 text-left text-[11px] tracking-wider uppercase">
-                <th className="px-4 py-2.5 font-medium">Vendor</th>
-                <th className="px-4 py-2.5 text-right font-medium">Invoice</th>
-                <th className="px-4 py-2.5 text-right font-medium">Settled</th>
-                <th className="px-4 py-2.5 text-right font-medium">Pending</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendorSummary.map((v) => (
-                <tr key={v.vendorId} className="border-white/[0.04] border-t">
-                  <td className="text-slate-300 px-4 py-3 text-[13px]">
-                    {v.vendorName}
-                  </td>
-                  <td className="text-slate-400 px-4 py-3 text-right font-mono text-[13px]">
-                    ${v.invoiceAmountUsd.toFixed(2)}
-                  </td>
-                  <td className="text-emerald-400 px-4 py-3 text-right font-mono text-[13px]">
-                    ${v.settledUsd.toFixed(2)}
-                  </td>
-                  <td className="text-amber-400 px-4 py-3 text-right font-mono text-[13px]">
-                    ${v.pendingUsd.toFixed(2)}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-500 text-left text-[11px] tracking-wider uppercase">
+                  <th className="px-4 py-2.5 font-medium">Vendor</th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Invoice
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Settled
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Pending
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {vendorSummary.map((v) => (
+                  <tr key={v.vendorId} className="border-white/[0.04] border-t">
+                    <td className="text-slate-300 px-4 py-3 text-[13px]">
+                      {v.vendorName}
+                    </td>
+                    <td className="text-slate-400 px-4 py-3 text-right font-mono text-[13px]">
+                      ${v.invoiceAmountUsd.toFixed(2)}
+                    </td>
+                    <td className="text-emerald-400 px-4 py-3 text-right font-mono text-[13px]">
+                      ${v.settledUsd.toFixed(2)}
+                    </td>
+                    <td className="text-amber-400 px-4 py-3 text-right font-mono text-[13px]">
+                      ${v.pendingUsd.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Invoice matching */}
@@ -104,7 +112,7 @@ export function ReconciliationView({
             return (
               <div
                 key={r.invoice.id}
-                className="glass animate-fade-in-up flex items-start gap-3 rounded-xl p-3.5"
+                className="bg-black/20 border-white/[0.06] animate-fade-in-up flex items-start gap-3 rounded-xl border p-3"
               >
                 <span
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${meta.cls} border`}
@@ -134,7 +142,7 @@ export function ReconciliationView({
       </div>
 
       {ledger.length > 0 && (
-        <div className="glass overflow-hidden rounded-2xl">
+        <div className="bg-black/20 border-white/[0.06] overflow-hidden rounded-xl border">
           <div className="border-white/[0.06] border-b px-4 py-3">
             <h4 className="section-title">Settlement Ledger</h4>
           </div>

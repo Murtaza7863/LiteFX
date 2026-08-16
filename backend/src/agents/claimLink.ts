@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { ClaimLink, NetObligation } from "../types";
 import { payoutOptionsFor } from "../data/countries";
 import {
@@ -17,7 +18,7 @@ export { payoutOptionsFor };
 export const PAYOUT_OPTIONS = payoutOptionsFor("");
 
 function generateClaimToken(): string {
-  return `cl_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  return `cl_${randomBytes(18).toString("base64url")}`;
 }
 
 export function createClaimLink(obligationId: string): ClaimLink | null {
@@ -76,6 +77,14 @@ export function claimWithPayoutMethod(
   if (new Date(link.expiresAt) < new Date()) {
     updateClaimLink(token, { status: "expired" });
     return { success: false, message: "This claim link has expired." };
+  }
+
+  const recipient = getEntity(link.recipientId);
+  if (!recipient || !getNetObligation(link.obligationId)) {
+    return { success: false, message: "Claim link is no longer valid." };
+  }
+  if (!payoutOptionsFor(recipient.country).includes(payoutMethod)) {
+    return { success: false, message: "Choose a valid payout method." };
   }
 
   updateClaimLink(token, { status: "claimed", payoutMethod });

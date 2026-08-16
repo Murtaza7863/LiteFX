@@ -25,9 +25,10 @@ export interface RoutingDecision {
   reason: string;
 }
 
-export function routeObligation(ob: NetObligation): RoutingDecision {
-  const sender = getEntity(ob.from)!;
-  const recipient = getEntity(ob.to)!;
+export function routeObligation(ob: NetObligation): RoutingDecision | null {
+  const sender = getEntity(ob.from);
+  const recipient = getEntity(ob.to);
+  if (!sender || !recipient) return null;
   const hasAccount = recipient.linkedRailAliases.length > 0;
   const pick = cheapestRail(sender.country, recipient.country, hasAccount);
 
@@ -66,8 +67,10 @@ export function runRouting(): NetObligation[] {
   for (const ob of obligations) {
     if (ob.status !== "pending") continue;
     const decision = routeObligation(ob);
-    const sender = getEntity(ob.from)!;
-    const recipient = getEntity(ob.to)!;
+    if (!decision) continue;
+    const sender = getEntity(ob.from);
+    const recipient = getEntity(ob.to);
+    if (!sender || !recipient) continue;
     updateNetObligation(ob.id, {
       chosenRail: decision.rail,
       routingReason: decision.reason,

@@ -98,10 +98,7 @@ test("claiming a payout settles once and a second claim is rejected", () => {
   const ob = claimObligation();
   const settled = settleObligation(ob.id);
   const token = settled.link!.token;
-  const first = claimWithPayoutMethod(
-    token,
-    "E-wallet (GrabPay, TrueMoney, Alipay, etc.)",
-  );
+  const first = claimWithPayoutMethod(token, "GrabPay");
   assert.equal(first.success, true);
   assert.equal(first.link?.status, "claimed");
   assert.equal(getNetStatus(ob.id), "settled");
@@ -132,6 +129,17 @@ test("expired claim links cannot be paid out", () => {
   assert.match(res.message, /expired/i);
   assert.equal(getStore().claimLinks[0].status, "expired");
   assert.equal(getStore().ledger.length, 0);
+});
+
+test("re-running netting drops old claim links so IDs cannot be reused", () => {
+  seedRouted();
+  const ob = claimObligation();
+  settleObligation(ob.id);
+  assert.ok(getStore().claimLinks.length > 0);
+  runNetting();
+  assert.equal(getStore().claimLinks.length, 0);
+  assert.equal(getStore().ledger.length, 0);
+  assert.ok(getStore().invoices.length > 0);
 });
 
 function getNetStatus(id: string) {

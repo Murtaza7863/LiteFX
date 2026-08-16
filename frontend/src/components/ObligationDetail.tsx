@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type { DebtEdge, Entity, NetObligation } from "../api/client";
 
 import { RAIL_META, COUNTRY_FLAGS } from "../lib/theme";
@@ -27,6 +29,14 @@ export function ObligationDetail({
   onClose,
 }: Props) {
   const meta = obligation.chosenRail ? RAIL_META[obligation.chosenRail] : null;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   // Raw pairwise debts between these two parties (either direction).
   const consolidated = debtEdges.filter(
@@ -64,6 +74,7 @@ export function ObligationDetail({
             <p className="text-slate-500 text-[11px]">
               {COUNTRY_FLAGS[fromEntity.country]} {fromEntity.country} →{" "}
               {COUNTRY_FLAGS[toEntity.country]} {toEntity.country}
+              {meta ? ` · ${meta.label}` : ""}
             </p>
           </div>
         </div>

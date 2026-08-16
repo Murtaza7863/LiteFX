@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import { after, afterEach, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import express from "express";
 import type { Server } from "node:http";
 import { apiRouter } from "./routes.js";
 import { pagesRouter } from "./pages.js";
-import { clearStore, seedStore } from "./store.js";
+import { getClaimLink, resetApp, runAsUser, seedStore } from "./store.js";
 import { loadTrip, traveler } from "./testUtil.js";
+import { resetAuthLimits } from "./auth.js";
 
 let server: Server;
 let base = "";
+let sessionCookie = "";
+let userId = "";
 
 before(async () => {
   const app = express();
@@ -30,18 +33,57 @@ after(async () => {
 });
 
 afterEach(() => {
-  clearStore();
+  resetApp();
+  resetAuthLimits();
+  sessionCookie = "";
+  userId = "";
 });
 
-async function json(path: string, init?: RequestInit) {
+beforeEach(async () => {
+  resetApp();
+  resetAuthLimits();
+  sessionCookie = "";
+  userId = "";
+  const { status, body } = await json(
+    "/auth/signup",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: "Ada",
+        email: "ada@x.test",
+        password: "correcthorse1",
+      }),
+    },
+    false,
+  );
+  assert.equal(status, 201, body.message);
+  userId = body.user.id as string;
+});
+
+function asUser<T>(fn: () => T): T {
+  return runAsUser(userId, fn);
+}
+
+async function json(path: string, init?: RequestInit, authed = true) {
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
+      ...(authed && sessionCookie ? { cookie: sessionCookie } : {}),
       ...(init?.headers ?? {}),
     },
   });
-  return { status: res.status, body: await res.json() };
+  const setCookie = res.headers.getSetCookie?.() ?? [];
+  const raw = setCookie[0] ?? res.headers.get("set-cookie") ?? "";
+  if (raw) sessionCookie = raw.split(";")[0];
+  const text = await res.text();
+  let body: any = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { raw: text };
+  }
+  return { status: res.status, body };
 }
 
 test("POST /entities requires name and country", async () => {
@@ -53,8 +95,17 @@ test("POST /entities requires name and country", async () => {
   assert.equal(body.success, false);
 });
 
+test("POST /entities rejects an unsupported country", async () => {
+  const { status, body } = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "Sam", country: "XX" }),
+  });
+  assert.equal(status, 400);
+  assert.match(body.message, /country/i);
+});
+
 test("POST /expenses rejects an empty participant list", async () => {
-  loadTrip([traveler("a", "A", "US", "zelle")]);
+  asUser(() => loadTrip([traveler("a", "A", "US", "zelle")]));
   const { status, body } = await json("/expenses", {
     method: "POST",
     body: JSON.stringify({
@@ -83,7 +134,7 @@ test("POST /expenses rejects an unknown payer", async () => {
 });
 
 test("POST /expenses rejects an unsupported currency", async () => {
-  loadTrip([traveler("a", "A", "US", "zelle")]);
+  asUser(() => loadTrip([traveler("a", "A", "US", "zelle")]));
   const { status, body } = await json("/expenses", {
     method: "POST",
     body: JSON.stringify({
@@ -97,7 +148,7 @@ test("POST /expenses rejects an unsupported currency", async () => {
 });
 
 test("POST /engine/run nets and routes the sample trip", async () => {
-  seedStore();
+  asUser(() => seedStore());
   const { status, body } = await json("/engine/run", { method: "POST" });
   assert.equal(status, 200);
   assert.ok(body.netEdgeCount > 0);
@@ -124,7 +175,7 @@ test("POST /claim/:token/claim requires a payout method", async () => {
 });
 
 test("GET /claim/:token marks a past-due pending link expired", async () => {
-  seedStore();
+  asUser(() => seedStore());
   await json("/engine/run", { method: "POST" });
   const scenario = await json("/scenario");
   const claimOb = scenario.body.netObligations.find(
@@ -135,8 +186,7 @@ test("GET /claim/:token marks a past-due pending link expired", async () => {
     method: "POST",
   });
   const token = settled.body.link.token as string;
-  const { getStore } = await import("./store.js");
-  const link = getStore().claimLinks.find((c) => c.token === token)!;
+  const link = getClaimLink(token)!;
   link.expiresAt = new Date(Date.now() - 1000).toISOString();
 
   const { status, body } = await json(`/claim/${token}`);
@@ -157,20 +207,22 @@ test("POST /entities then GET /scenario includes the traveler", async () => {
 });
 
 test("DELETE /expenses/:id removes the expense", async () => {
-  loadTrip(
-    [traveler("a", "A", "US", "zelle"), traveler("b", "B", "US", "zelle")],
-    [
-      {
-        id: "e1",
-        payerId: "a",
-        participantIds: ["a", "b"],
-        amount: 40,
-        currency: "USD",
-        tripId: "t",
-        category: "general",
-        description: "Lunch",
-      },
-    ],
+  asUser(() =>
+    loadTrip(
+      [traveler("a", "A", "US", "zelle"), traveler("b", "B", "US", "zelle")],
+      [
+        {
+          id: "e1",
+          payerId: "a",
+          participantIds: ["a", "b"],
+          amount: 40,
+          currency: "USD",
+          tripId: "t",
+          category: "general",
+          description: "Lunch",
+        },
+      ],
+    ),
   );
   const { body } = await json("/expenses/e1", { method: "DELETE" });
   assert.equal(body.success, true);
@@ -190,4 +242,82 @@ test("shareable claim page 404s for a missing token", async () => {
   assert.equal(res.status, 404);
   const html = await res.text();
   assert.match(html, /not found/i);
+});
+
+test("GET /scenario includes FX rates and a settlement plan", async () => {
+  const { status, body } = await json("/scenario");
+  assert.equal(status, 200);
+  assert.equal(body.fx.rates.USD, 1);
+  assert.equal(typeof body.fx.live, "boolean");
+  assert.match(body.plan.text, /settlement plan/i);
+});
+
+test("PATCH /entities/:id updates the traveler", async () => {
+  const created = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "Sam", country: "SG", railType: "PayNow" }),
+  });
+  const id = created.body.entity.id as string;
+  const { status, body } = await json(`/entities/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name: "Samantha", railType: null }),
+  });
+  assert.equal(status, 200);
+  assert.equal(body.entity.name, "Samantha");
+  assert.deepEqual(body.entity.linkedRailAliases, []);
+});
+
+test("PATCH /entities/:id 404s for an unknown traveler", async () => {
+  const { status, body } = await json("/entities/ent-missing", {
+    method: "PATCH",
+    body: JSON.stringify({ name: "Nope" }),
+  });
+  assert.equal(status, 404);
+  assert.equal(body.success, false);
+});
+
+test("PATCH /expenses/:id updates amount and category", async () => {
+  asUser(() =>
+    loadTrip(
+      [traveler("a", "A", "US", "zelle"), traveler("b", "B", "US", "zelle")],
+      [
+        {
+          id: "e1",
+          payerId: "a",
+          participantIds: ["a", "b"],
+          amount: 40,
+          currency: "USD",
+          tripId: "t",
+          category: "general",
+          description: "Lunch",
+        },
+      ],
+    ),
+  );
+  const { status, body } = await json("/expenses/e1", {
+    method: "PATCH",
+    body: JSON.stringify({ amount: 55, category: "food" }),
+  });
+  assert.equal(status, 200);
+  assert.equal(body.expense.amount, 55);
+  assert.equal(body.expense.category, "food");
+  const scenario = await json("/scenario");
+  assert.equal(scenario.body.debtEdges[0].amount, 27.5);
+});
+
+test("sample trip plan after engine run includes Eve's link-account tip", async () => {
+  asUser(() => seedStore());
+  await json("/engine/run", { method: "POST" });
+  const { body } = await json("/scenario");
+  assert.ok(
+    body.plan.insights.some(
+      (i: { recipientName: string }) => i.recipientName === "Eve Lim",
+    ),
+  );
+});
+
+test("GET /scenario requires sign-in", async () => {
+  const { status, body } = await json("/scenario", undefined, false);
+  assert.equal(status, 401);
+  assert.equal(body.success, false);
 });

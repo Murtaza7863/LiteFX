@@ -1,6 +1,11 @@
 import type { DebtEdge, Entity, NetObligation } from "../types";
 import { currencyOf, fromUsd } from "../types";
-import { getStore, setNetObligations, setNettingSummary } from "../store";
+import {
+  getStore,
+  setNetObligations,
+  setNettingSummary,
+  resetEngineOutputs,
+} from "../store";
 import { cheapestRail, feePctForPair } from "../data/railOptions";
 
 // ──────────────────────────────────────────────
@@ -34,8 +39,9 @@ function findConnectedComponents(
   const adj = new Map<string, Set<string>>();
   for (const id of entityIds) adj.set(id, new Set());
   for (const e of edges) {
-    adj.get(e.from)?.add(e.to);
-    adj.get(e.to)?.add(e.from);
+    if (!adj.has(e.from) || !adj.has(e.to)) continue;
+    adj.get(e.from)!.add(e.to);
+    adj.get(e.to)!.add(e.from);
   }
 
   const visited = new Set<string>();
@@ -249,6 +255,7 @@ export interface NettingResult {
 }
 
 export function runNetting(): NettingResult {
+  resetEngineOutputs();
   const store = getStore();
   const entities = store.entities;
   const debtEdges = store.debtEdges;

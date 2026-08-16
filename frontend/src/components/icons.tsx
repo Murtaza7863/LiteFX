@@ -6,7 +6,10 @@ import type { ReactNode, SVGProps } from "react";
 // professional look. All inherit currentColor.
 // ──────────────────────────────────────────────
 
-function Svg({ children, ...props }: SVGProps<SVGSVGElement> & { children: ReactNode }) {
+function Svg({
+  children,
+  ...props
+}: SVGProps<SVGSVGElement> & { children: ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -163,6 +166,45 @@ export const IconPlus = (p: P) => (
   </Svg>
 );
 
+export const IconPencil = (p: P) => (
+  <Svg {...p}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+  </Svg>
+);
+
+export const IconShare = (p: P) => (
+  <Svg {...p}>
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  </Svg>
+);
+
+export const IconDownload = (p: P) => (
+  <Svg {...p}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </Svg>
+);
+
+export const IconMore = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="5" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
+export const IconChevron = (p: P) => (
+  <Svg {...p}>
+    <polyline points="6 9 12 15 18 9" />
+  </Svg>
+);
+
 export const IconInfo = (p: P) => (
   <Svg {...p}>
     <circle cx="12" cy="12" r="10" />
@@ -171,8 +213,27 @@ export const IconInfo = (p: P) => (
   </Svg>
 );
 
+export const IconSun = (p: P) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+  </Svg>
+);
+
+export const IconMoon = (p: P) => (
+  <Svg {...p}>
+    <path d="M21 14.3A8.5 8.5 0 1 1 9.7 3 7 7 0 0 0 21 14.3z" />
+  </Svg>
+);
+
 // Map a rail type to its icon (used by cards, legend, modal).
-export function RailIcon({ type, className }: { type: string; className?: string }) {
+export function RailIcon({
+  type,
+  className,
+}: {
+  type: string;
+  className?: string;
+}) {
   const cls = className ?? "h-4 w-4";
   switch (type) {
     case "local":

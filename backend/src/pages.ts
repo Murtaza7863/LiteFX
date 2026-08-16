@@ -22,11 +22,18 @@ pagesRouter.get("/claim/:token", (req, res) => {
 });
 
 function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function notFoundPage(): string {
-  return shell("Link not found", `<p class="muted">This claim link does not exist or was reset.</p>`);
+  return shell(
+    "Link not found",
+    `<p class="muted">This claim link does not exist or was reset.</p>`,
+  );
 }
 
 function shell(title: string, body: string): string {
@@ -58,6 +65,15 @@ function shell(title: string, body: string): string {
     background: linear-gradient(90deg,#f59e0b,#f97316); box-shadow:0 8px 20px -8px rgba(245,158,11,.5); }
   button:disabled { opacity:.4; cursor:not-allowed; }
   .ok { text-align:center; color:#6ee7b7; font-weight:600; padding:12px; }
+  @media (prefers-color-scheme: light) {
+    :root { color-scheme: light; }
+    body { background: #f3f6fb radial-gradient(ellipse 60% 40% at 30% 0%, rgba(8,145,178,.12), transparent), #f3f6fb; color: #0f172a; }
+    .card { border-color: rgba(15,23,42,.1); background: #fff; box-shadow: 0 18px 40px -24px rgba(15,23,42,.25); }
+    .muted { color: #64748b; }
+    .amount { background: #f8fafc; border-color: rgba(15,23,42,.08); }
+    label.opt { border-color: rgba(15,23,42,.1); }
+    label.opt:hover { background: #f8fafc; }
+  }
 </style>
 </head>
 <body><div class="card">${body}</div></body>
@@ -75,9 +91,10 @@ function claimPage(token: string): string {
       const root = document.getElementById('root');
       fetch('/api/claim/' + TOKEN).then(r => r.json()).then(d => {
         if (!d.link) { root.innerHTML = '<p class="muted">Link unavailable.</p>'; return; }
+        const esc = (s) => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         const ob = d.obligation || {};
         const opts = (d.payoutOptions || []).map((o,i) =>
-          '<label class="opt"><input type="radio" name="p" value="'+i+'"> '+o+'</label>').join('');
+          '<label class="opt"><input type="radio" name="p" value="'+i+'"> '+esc(o)+'</label>').join('');
         root.innerHTML =
           '<div class="amount"><div class="big">'+(ob.amount||0).toLocaleString()+' '+(ob.settlementCurrency||'')+'</div>' +
           '<div class="muted">≈ $'+(ob.amountUsd||0).toFixed(2)+' USD</div></div>' +
@@ -94,7 +111,9 @@ function claimPage(token: string): string {
             go.disabled = true; go.textContent = 'Claiming…';
             fetch('/api/claim/' + TOKEN + '/claim', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ payoutMethod: method }) })
               .then(r => r.json()).then(r => {
-                root.innerHTML = r.success ? '<div class="ok">Claimed! Payout via “'+method+'” is queued.</div>' : '<div class="ok" style="color:#fca5a5">'+(r.message||'Failed')+'</div>';
+                root.innerHTML = r.success
+                  ? '<div class="ok">Claimed! Payout via “'+esc(method)+'” is queued.</div>'
+                  : '<div class="ok" style="color:#fca5a5">'+esc(r.message||'Failed')+'</div>';
               });
           });
         }

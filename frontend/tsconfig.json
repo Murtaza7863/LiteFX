@@ -5,6 +5,14 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "node:fs": ["./src/engine/shims/fs.ts"],
+      "node:path": ["./src/engine/shims/path.ts"],
+      "node:url": ["./src/engine/shims/url.ts"],
+      "node:async_hooks": ["./src/engine/shims/async_hooks.ts"],
+      "node:crypto": ["./src/engine/shims/crypto.ts"]
+    },
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,

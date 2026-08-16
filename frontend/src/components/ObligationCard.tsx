@@ -5,9 +5,7 @@ import { Avatar } from "./Avatar";
 import { RailIcon, IconAlertTriangle } from "./icons";
 
 // ──────────────────────────────────────────────
-// Per-obligation card. Shows the sender → recipient,
-// the amount, the chosen rail with its reasoning
-// string, compliance flags, and a settle action.
+// Per-obligation card: who pays whom, amount, rail, settle.
 // ──────────────────────────────────────────────
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -58,15 +56,14 @@ export function ObligationCard({
 
   return (
     <div
-      className={`glass-strong animate-fade-in-up flex flex-col rounded-2xl p-4 transition-transform duration-200 hover:-translate-y-0.5 ${className}`}
+      className={`glass-strong animate-fade-in-up flex flex-col rounded-2xl p-3.5 ${className}`}
     >
-      {/* Top row: route + status */}
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="mb-2.5 flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Avatar id={fromEntity.id} name={fromEntity.name} size={30} />
-          <ArrowIcon className="text-slate-500 h-3.5 w-3.5 shrink-0" />
-          <Avatar id={toEntity.id} name={toEntity.name} size={30} />
-          <div className="ml-1.5 min-w-0">
+          <Avatar id={fromEntity.id} name={fromEntity.name} size={26} />
+          <ArrowIcon className="text-slate-500 h-3 w-3 shrink-0" />
+          <Avatar id={toEntity.id} name={toEntity.name} size={26} />
+          <div className="ml-1 min-w-0">
             <p className="text-slate-200 truncate text-[13px] leading-tight font-semibold">
               {fromEntity.name.trim().split(" ")[0]}
               <span className="text-slate-500 font-normal"> → </span>
@@ -84,54 +81,34 @@ export function ObligationCard({
         </span>
       </div>
 
-      {/* Amount */}
-      <div className="mb-3">
-        <p className="text-slate-50 font-mono text-2xl font-bold tracking-tight">
-          {obligation.amount.toLocaleString(undefined, {
-            maximumFractionDigits: 2,
-          })}
-          <span className="text-slate-400 ml-1.5 text-base font-semibold">
-            {obligation.settlementCurrency}
-          </span>
-        </p>
-        <p className="text-slate-500 font-mono text-xs">
-          ≈ ${obligation.amountUsd.toFixed(2)} USD
-        </p>
+      <div className="mb-2.5 flex items-end justify-between gap-2">
+        <div>
+          <p className="text-slate-50 font-mono text-xl font-bold tracking-tight">
+            {obligation.amount.toLocaleString(undefined, {
+              maximumFractionDigits: 2,
+            })}
+            <span className="text-slate-400 ml-1 text-sm font-semibold">
+              {obligation.settlementCurrency}
+            </span>
+          </p>
+          <p className="text-slate-500 font-mono text-[11px]">
+            ≈ ${obligation.amountUsd.toFixed(2)} USD
+          </p>
+        </div>
+        {meta && (
+          <div
+            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 ${meta.soft}`}
+          >
+            <RailIcon type={rail!} className={`h-3.5 w-3.5 ${meta.text}`} />
+            <span className={`text-[11px] font-semibold ${meta.text}`}>
+              {meta.label}
+            </span>
+          </div>
+        )}
       </div>
 
-      {/* Rail badge */}
-      {meta && (
-        <div
-          className={`mb-3 flex items-center gap-2 rounded-lg border px-2.5 py-2 ${meta.soft}`}
-        >
-          <RailIcon type={rail!} className={`h-4 w-4 ${meta.text}`} />
-          <span className={`text-xs font-semibold ${meta.text}`}>
-            {meta.label}
-          </span>
-        </div>
-      )}
-
-      {/* Routing reason */}
-      {obligation.routingReason && (
-        <div className="bg-black/25 border-white/[0.04] mb-3 rounded-lg border px-3 py-2.5">
-          <p className="text-slate-500 mb-1 text-[10px] font-semibold tracking-wider uppercase">
-            Why this rail
-          </p>
-          <p className="text-slate-300 text-xs leading-relaxed">
-            {obligation.routingReason}
-          </p>
-        </div>
-      )}
-
-      {obligation.matchReason && (
-        <p className="text-slate-500 mb-3 text-[11px] leading-relaxed">
-          {obligation.matchReason}
-        </p>
-      )}
-
-      {/* Compliance flags */}
       {obligation.complianceFlags && obligation.complianceFlags.length > 0 && (
-        <div className="mb-3 flex flex-wrap gap-1.5">
+        <div className="mb-2.5 flex flex-wrap gap-1.5">
           {obligation.complianceFlags.map((f, i) => (
             <span
               key={i}

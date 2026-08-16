@@ -115,6 +115,31 @@ export interface LedgerEntry {
   timestamp: string;
 }
 
+export interface FxSnapshot {
+  live: boolean;
+  asOf: string | null;
+  rates: Record<string, number>;
+}
+
+export interface SettlementInsight {
+  type: "link_account";
+  recipientId: string;
+  recipientName: string;
+  country: string;
+  suggestedRail: string;
+  currentFeeUsd: number;
+  linkedFeeUsd: number;
+  savingsUsd: number;
+  wouldBeRail: string;
+  wouldBeRailName: string;
+  message: string;
+}
+
+export interface SettlementPlan {
+  text: string;
+  insights: SettlementInsight[];
+}
+
 export interface ScenarioResponse {
   entities: Entity[];
   expenses: Expense[];
@@ -129,6 +154,8 @@ export interface ScenarioResponse {
   complianceRan: boolean;
   reconciliationRan: boolean;
   vendorSummary: any[];
+  fx?: FxSnapshot;
+  plan?: SettlementPlan;
 }
 
 export interface NettingResult {
@@ -156,24 +183,44 @@ export interface ClaimDetails {
   payoutOptions: string[];
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+}
+
+import { staticClient } from "../engine/staticClient";
+
 async function api<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  opts?: { skipAuthEvent?: boolean },
 ): Promise<T> {
   const res = await fetch(`/api${path}`, {
     method,
+    credentials: "include",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401 && !opts?.skipAuthEvent) {
+    window.dispatchEvent(new Event("litefx:unauthorized"));
+  }
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API ${path}: ${res.status} ${text}`);
+    let message = text;
+    try {
+      const parsed = JSON.parse(text) as { message?: string };
+      if (parsed.message) message = parsed.message;
+    } catch {
+      /* keep raw */
+    }
+    throw new Error(message);
   }
   return res.json() as Promise<T>;
 }
 
-export const client = {
+export const httpClient = {
   getScenario: () => api<ScenarioResponse>("/scenario"),
   runNetting: () => api<NettingResult>("/netting/run", "POST"),
   runEngine: () => api<NettingResult & RoutingResult>("/engine/run", "POST"),
@@ -212,13 +259,84 @@ export const client = {
     amount: number;
     currency: string;
     description: string;
+    category?: string;
     split?: {
       mode: "equal" | "percent" | "amount";
       parts?: Record<string, number>;
     };
   }) => api<{ success: boolean; expense: Expense }>("/expenses", "POST", body),
+  updateEntity: (
+    id: string,
+    body: {
+      name?: string;
+      country?: string;
+      railType?: string | null;
+      alias?: string;
+      contact?: { type: "email" | "phone"; value: string };
+    },
+  ) =>
+    api<{ success: boolean; entity: Entity }>(`/entities/${id}`, "PATCH", body),
+  updateExpense: (
+    id: string,
+    body: {
+      payerId?: string;
+      participantIds?: string[];
+      amount?: number;
+      currency?: string;
+      description?: string;
+      category?: string;
+      split?: {
+        mode: "equal" | "percent" | "amount";
+        parts?: Record<string, number>;
+      };
+    },
+  ) =>
+    api<{ success: boolean; expense: Expense }>(
+      `/expenses/${id}`,
+      "PATCH",
+      body,
+    ),
   deleteExpense: (id: string) =>
     api<{ success: boolean }>(`/expenses/${id}`, "DELETE"),
   deleteEntity: (id: string) =>
     api<{ success: boolean }>(`/entities/${id}`, "DELETE"),
+  me: async (): Promise<User | null> => {
+    try {
+      const r = await api<{ user: User }>("/auth/me", "GET", undefined, {
+        skipAuthEvent: true,
+      });
+      return r.user;
+    } catch {
+      return null;
+    }
+  },
+  signup: async (body: { name: string; email: string; password: string }) => {
+    const r = await api<{ user: User }>("/auth/signup", "POST", body, {
+      skipAuthEvent: true,
+    });
+    return r.user;
+  },
+  login: async (body: { email: string; password: string }) => {
+    const r = await api<{ user: User }>("/auth/login", "POST", body, {
+      skipAuthEvent: true,
+    });
+    return r.user;
+  },
+  demo: async () => {
+    const r = await api<{ user: User }>(
+      "/auth/demo",
+      "POST",
+      {},
+      {
+        skipAuthEvent: true,
+      },
+    );
+    return r.user;
+  },
+  logout: () => api<{ success: boolean }>("/auth/logout", "POST"),
 };
+
+export const client =
+  import.meta.env.VITE_STATIC === "1" || import.meta.env.BASE_URL !== "/"
+    ? staticClient
+    : httpClient;

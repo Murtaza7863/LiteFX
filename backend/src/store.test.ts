@@ -8,6 +8,8 @@ import {
   deleteExpense,
   getStore,
   seedStore,
+  updateEntity,
+  updateExpense,
 } from "./store.js";
 import { expense, loadTrip, traveler } from "./testUtil.js";
 import { runNetting } from "./agents/netting.js";
@@ -158,4 +160,58 @@ test("adding a traveler also wipes derived nets and invoices", () => {
   assert.equal(getStore().netObligations.length, 0);
   assert.equal(getStore().invoices.length, 0);
   assert.ok(getStore().entities.some((e) => e.id === "ent-new"));
+});
+
+test("renaming a traveler keeps nets but updates the balance label", () => {
+  seedStore();
+  runNetting();
+  const nets = getStore().netObligations.length;
+  const updated = updateEntity("ent-alice", { name: "Alice T." });
+  assert.equal(updated?.name, "Alice T.");
+  assert.equal(getStore().netObligations.length, nets);
+  assert.ok(
+    getStore().nettingSummary?.balances.some(
+      (b) => b.entityId === "ent-alice" && b.entityName === "Alice T.",
+    ),
+  );
+});
+
+test("changing a traveler country wipes derived nets", () => {
+  seedStore();
+  runNetting();
+  updateEntity("ent-alice", { country: "US" });
+  assert.equal(getStore().netObligations.length, 0);
+});
+
+test("editing only an expense description keeps nets", () => {
+  seedStore();
+  runNetting();
+  const nets = getStore().netObligations.length;
+  const exp = getStore().expenses[0];
+  updateExpense(exp.id, { ...exp, description: "Renamed dinner" });
+  assert.equal(getStore().netObligations.length, nets);
+  assert.equal(
+    getStore().expenses.find((e) => e.id === exp.id)?.description,
+    "Renamed dinner",
+  );
+});
+
+test("editing an expense amount recomputes debts and clears nets", () => {
+  loadTrip(
+    [traveler("a", "A", "US", "zelle"), traveler("b", "B", "US", "zelle")],
+    [
+      expense({
+        id: "e1",
+        payerId: "a",
+        participantIds: ["a", "b"],
+        amount: 40,
+      }),
+    ],
+  );
+  runNetting();
+  assert.ok(getStore().netObligations.length > 0);
+  const exp = getStore().expenses[0];
+  updateExpense(exp.id, { ...exp, amount: 80 });
+  assert.equal(getStore().netObligations.length, 0);
+  assert.equal(getStore().debtEdges[0]?.amountUsd, 40);
 });

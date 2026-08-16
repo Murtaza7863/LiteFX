@@ -45,12 +45,12 @@ function hash(str: string): number {
   return Math.abs(h);
 }
 
-const W = 620;
-const H = 480;
+const W = 680;
+const H = 540;
 const CX = W / 2;
 const CY = H / 2;
-const R = 168;
-const NODE_R = 30;
+const R = 175;
+const NODE_R = 28;
 
 interface Geom {
   id: string;
@@ -139,7 +139,7 @@ export function DebtGraph({
   }, [edges, positions, edgeOffsets, mode]);
 
   return (
-    <div className="animate-fade-in bg-black/25 relative overflow-hidden rounded-xl p-2">
+    <div className="animate-fade-in bg-black/25 relative overflow-visible rounded-xl p-2">
       {entities.length === 0 ? (
         <div className="text-slate-500 flex h-[420px] items-center justify-center text-sm">
           No entities loaded.
@@ -333,31 +333,35 @@ export function DebtGraph({
           {/* Layer 3: amount pills on top */}
           {geom
             .filter((g) => g.isNet)
-            .map((g) => (
-              <g key={`label-${g.id}`}>
-                <rect
-                  x={g.mx - 22}
-                  y={g.my - 10}
-                  width={44}
-                  height={18}
-                  rx={9}
-                  fill="rgba(7,11,20,0.96)"
-                  stroke={g.color}
-                  strokeOpacity="0.4"
-                />
-                <text
-                  x={g.mx}
-                  y={g.my + 3}
-                  textAnchor="middle"
-                  fontSize="10"
-                  fontWeight="600"
-                  fill={g.color}
-                  fontFamily="JetBrains Mono, monospace"
-                >
-                  ${g.amountUsd.toFixed(0)}
-                </text>
-              </g>
-            ))}
+            .map((g) => {
+              const label = `$${g.amountUsd.toFixed(0)}`;
+              const pw = Math.max(44, 14 + label.length * 7);
+              return (
+                <g key={`label-${g.id}`}>
+                  <rect
+                    x={g.mx - pw / 2}
+                    y={g.my - 10}
+                    width={pw}
+                    height={18}
+                    rx={9}
+                    fill="var(--graph-pill)"
+                    stroke={g.color}
+                    strokeOpacity="0.4"
+                  />
+                  <text
+                    x={g.mx}
+                    y={g.my + 3}
+                    textAnchor="middle"
+                    fontSize="10"
+                    fontWeight="600"
+                    fill={g.color}
+                    fontFamily="JetBrains Mono, monospace"
+                  >
+                    {label}
+                  </text>
+                </g>
+              );
+            })}
         </svg>
       )}
 
