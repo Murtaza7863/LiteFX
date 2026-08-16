@@ -603,3 +603,75 @@ test("normalizeApp migrates a v2 single-trip file", () => {
   assert.equal(trip.name, "Bangkok Trip 2026");
   assert.equal(trip.entities.length, 1);
 });
+
+test("normalizeApp restores Eve's PayNow on an old sample trip once", () => {
+  const raw = {
+    version: 3 as const,
+    users: [],
+    sessions: [],
+    workspaces: {
+      "user-local": {
+        activeTripId: "t1",
+        trips: {
+          t1: {
+            id: "t1",
+            name: "Bangkok Trip 2026",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            entities: [
+              {
+                id: "ent-alice",
+                name: "Alice Tan",
+                country: "SG",
+                contact: { type: "phone", value: "+65-9000-1111" },
+                linkedRailAliases: [
+                  { railType: "PayNow", alias: "+6590001111" },
+                ],
+              },
+              {
+                id: "ent-eve",
+                name: "Eve Lim",
+                country: "SG",
+                contact: { type: "phone", value: "+65-8000-9999" },
+                linkedRailAliases: [],
+              },
+            ],
+            expenses: [],
+            netObligations: [
+              {
+                id: "n1",
+                from: "ent-alice",
+                to: "ent-eve",
+                amountUsd: 10,
+                amount: 13,
+                settlementCurrency: "SGD",
+                status: "routed",
+                chosenRail: "claim_link",
+              },
+            ],
+          },
+        },
+        contacts: [],
+      },
+    },
+  };
+  const first = normalizeApp(raw);
+  assert.ok(first);
+  const trip = first.workspaces["user-local"].trips.t1;
+  assert.equal(
+    trip.entities.find((e) => e.id === "ent-eve")?.linkedRailAliases[0]
+      ?.railType,
+    "PayNow",
+  );
+  assert.equal(trip.netObligations.length, 0);
+  assert.equal(first.sampleAccounts, 1);
+
+  trip.entities.find((e) => e.id === "ent-eve")!.linkedRailAliases = [];
+  const second = normalizeApp(first);
+  assert.equal(
+    second?.workspaces["user-local"].trips.t1.entities.find(
+      (e) => e.id === "ent-eve",
+    )?.linkedRailAliases.length,
+    0,
+  );
+});

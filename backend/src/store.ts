@@ -124,8 +124,12 @@ export interface TripSummary {
   netted: boolean;
 }
 
+/** Bump when the sample crew's default rails change so old Pages DBs catch up. */
+const SAMPLE_ACCOUNTS = 1;
+
 export interface AppState {
   version: 3;
+  sampleAccounts?: number;
   users: UserRecord[];
   sessions: SessionRecord[];
   workspaces: Record<string, UserWorkspace>;
@@ -268,7 +272,48 @@ let persistence: PersistenceAdapter | null = null;
 let persistenceError: string | null = null;
 
 function emptyApp(): AppState {
-  return { version: 3, users: [], sessions: [], workspaces: {} };
+  return {
+    version: 3,
+    sampleAccounts: SAMPLE_ACCOUNTS,
+    users: [],
+    sessions: [],
+    workspaces: {},
+  };
+}
+
+function dropDerivedSettlement(trip: StoreState): void {
+  trip.netObligations = [];
+  trip.nettingSummary = null;
+  trip.claimLinks = [];
+  trip.complianceFlags = [];
+  trip.complianceRan = false;
+  trip.reconciliationResults = [];
+  trip.reconciliationRan = false;
+  trip.vendorSummary = [];
+}
+
+/** Old sample trips left Eve with no account. Restore seed rails once. */
+function restoreSampleAccounts(trip: StoreState): boolean {
+  const byId = new Map(SEED_ENTITIES.map((e) => [e.id, e]));
+  let changed = false;
+  for (const e of trip.entities) {
+    const seed = byId.get(e.id);
+    if (!seed || seed.linkedRailAliases.length === 0) continue;
+    if (e.linkedRailAliases.length > 0) continue;
+    e.linkedRailAliases = structuredClone(seed.linkedRailAliases);
+    changed = true;
+  }
+  if (changed) dropDerivedSettlement(trip);
+  return changed;
+}
+
+function finishApp(state: AppState): AppState {
+  if ((state.sampleAccounts ?? 0) >= SAMPLE_ACCOUNTS) return state;
+  for (const ws of Object.values(state.workspaces)) {
+    for (const trip of Object.values(ws.trips)) restoreSampleAccounts(trip);
+  }
+  state.sampleAccounts = SAMPLE_ACCOUNTS;
+  return state;
 }
 
 function ownerId(): string {
@@ -448,7 +493,13 @@ export function normalizeApp(parsed: unknown): AppState | null {
     for (const [uid, ws] of Object.entries(p.workspaces)) {
       workspaces[uid] = migrateWorkspace(ws);
     }
-    return { version: 3, users, sessions, workspaces };
+    return finishApp({
+      version: 3,
+      sampleAccounts: p.sampleAccounts,
+      users,
+      sessions,
+      workspaces,
+    });
   }
 
   if (p.trips && typeof p.trips === "object") {
@@ -456,21 +507,21 @@ export function normalizeApp(parsed: unknown): AppState | null {
     for (const [uid, raw] of Object.entries(p.trips)) {
       workspaces[uid] = migrateWorkspace(raw);
     }
-    return { version: 3, users, sessions, workspaces };
+    return finishApp({ version: 3, users, sessions, workspaces });
   }
 
   if (p.entities || p.expenses) {
     const ws = migrateWorkspace(p);
-    return {
+    return finishApp({
       version: 3,
       users,
       sessions,
       workspaces: { [DEFAULT_OWNER]: ws },
-    };
+    });
   }
 
   if (p.version === 3 || p.version === 2) {
-    return { version: 3, users, sessions, workspaces: {} };
+    return finishApp({ version: 3, users, sessions, workspaces: {} });
   }
   return null;
 }
