@@ -5,6 +5,7 @@ import type { Entity, Expense, FxSnapshot } from "../api/client";
 import { categoryLabel, EXPENSE_CATEGORIES } from "../lib/countries";
 import { countryFlag, COUNTRY_NAMES } from "../lib/theme";
 import { toUsd } from "../lib/tripMath";
+import { splitSummary } from "../lib/settlementRecap";
 import { Avatar } from "./Avatar";
 import { IconPencil, IconX } from "./icons";
 
@@ -60,7 +61,7 @@ export function ScenarioOverview({
                     {!hasAccount && (
                       <span
                         className="chip shrink-0 border border-[#c4a574]/30 bg-[#c4a574]/15 !px-1.5 !py-0 !text-[9px] text-[#c4a574]"
-                        title="No linked account — will receive via claim link"
+                        title="No linked account. Will receive via claim link"
                       >
                         no account
                       </span>
@@ -173,9 +174,9 @@ export function ScenarioOverview({
                           {" · "}
                           {exp.split && exp.split.mode !== "equal"
                             ? exp.split.mode === "percent"
-                              ? `custom % · ${exp.participantIds.length} people`
-                              : `custom amounts · ${exp.participantIds.length} people`
-                            : `split ${exp.participantIds.length} ways`}
+                              ? `custom % · ${splitSummary(exp.participantIds, entities)}`
+                              : `custom amounts · ${splitSummary(exp.participantIds, entities)}`
+                            : `split ${splitSummary(exp.participantIds, entities)}`}
                         </p>
                       </td>
                       <td className="px-3.5 py-2.5">

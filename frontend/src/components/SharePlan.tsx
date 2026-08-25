@@ -1,9 +1,14 @@
 import { useState } from "react";
 
-import type { SettlementInsight, SettlementPlan } from "../api/client";
-
+import type {
+  Entity,
+  NetObligation,
+  SettlementInsight,
+  SettlementPlan,
+} from "../api/client";
+import { allSendSlips } from "../lib/paymentSlip";
 import { appBase } from "../lib/urls";
-import { IconShare } from "./icons";
+import { IconFileText, IconShare } from "./icons";
 
 export function SharePlanButton({
   plan,
@@ -38,6 +43,44 @@ export function SharePlanButton({
     >
       <IconShare className="h-3.5 w-3.5" />
       Copy plan
+    </button>
+  );
+}
+
+export function CopySlipsButton({
+  obligations,
+  entityOf,
+  onCopied,
+}: {
+  obligations: NetObligation[];
+  entityOf: (id: string) => Entity | undefined;
+  onCopied: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const text = allSendSlips(obligations, entityOf);
+  if (!text) return null;
+
+  const handleCopy = async () => {
+    setBusy(true);
+    try {
+      await navigator.clipboard.writeText(text);
+      onCopied("Send slips copied");
+    } catch {
+      onCopied("Could not copy slips");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      disabled={busy}
+      className="btn-ghost !px-3 !py-1.5 text-xs"
+    >
+      <IconFileText className="h-3.5 w-3.5" />
+      Copy slips
     </button>
   );
 }

@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import type { DebtEdge, Entity, NetObligation } from "../api/client";
 
 import { RAIL_META } from "../lib/theme";
+import { railSummary } from "../lib/paymentSlip";
 import { Avatar } from "./Avatar";
 
 interface Props {
@@ -21,6 +22,7 @@ interface Flow {
   currency: string;
   amountUsd: number;
   rail?: string;
+  railName?: string;
 }
 
 export function DebtGraph({
@@ -46,6 +48,7 @@ export function DebtGraph({
             currency: o.settlementCurrency,
             amountUsd: o.amountUsd,
             rail: o.chosenRail,
+            railName: railSummary(o).name,
           }))
         : debtEdges.map((e) => ({
             id: e.id,
@@ -93,7 +96,7 @@ export function DebtGraph({
     return (
       <p className="text-slate-500 py-2 text-sm">
         {mode === "netted"
-          ? "No transfers yet — run netting first."
+          ? "No transfers yet. Run netting first."
           : "No debts yet."}
       </p>
     );
@@ -144,7 +147,7 @@ export function DebtGraph({
                           className={`h-1.5 w-1.5 rounded-full ${meta.dot}`}
                         />
                         <span className="hidden min-[420px]:inline">
-                          {meta.label}
+                          {f.railName ?? meta.label}
                         </span>
                       </span>
                     )}

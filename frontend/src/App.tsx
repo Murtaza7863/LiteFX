@@ -24,20 +24,25 @@ import { ClaimLinkModal } from "./components/ClaimLinkModal";
 import { Collapsible } from "./components/Collapsible";
 import { DebtGraph } from "./components/DebtGraph";
 import { FxBar } from "./components/FxBar";
-import { IconMerge, IconSend, IconChevron } from "./components/icons";
+import { IconMerge, IconSend } from "./components/icons";
 import { LogoMark, Wordmark } from "./components/Logo";
 import { ObligationCard } from "./components/ObligationCard";
 import { ObligationDetail } from "./components/ObligationDetail";
 import { SavedPeople } from "./components/SavedPeople";
 import { ScenarioOverview } from "./components/ScenarioOverview";
 import { SettlementLog } from "./components/SettlementLog";
-import { InsightsPanel, SharePlanButton } from "./components/SharePlan";
+import { SettlementRecap } from "./components/SettlementRecap";
+import {
+  CopySlipsButton,
+  InsightsPanel,
+  SharePlanButton,
+} from "./components/SharePlan";
 import { Stepper } from "./components/Stepper";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { TripBooks } from "./components/TripBooks";
+import { TripSnapshot } from "./components/TripSnapshot";
 import { TripSwitcher } from "./components/TripSwitcher";
 import { RAIL_META } from "./lib/theme";
-import { booksCloseUsd } from "./lib/tripMath";
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -57,6 +62,7 @@ export default function App() {
   const [toasts, setToasts] = useState<
     { id: number; msg: string; kind: "ok" | "warn" }[]
   >([]);
+  const [graphMode, setGraphMode] = useState<"raw" | "netted">("raw");
 
   const notify = useCallback((msg: string, kind: "ok" | "warn" = "ok") => {
     const id = Date.now() + Math.random();
@@ -112,7 +118,14 @@ export default function App() {
             /* private mode */
           }
           u = await client.demo();
-          if (!hadDb) await client.seed();
+          if (!hadDb) {
+            await client.seed();
+            try {
+              await client.runEngine();
+            } catch {
+              /* sample with no debts should not happen */
+            }
+          }
         }
         setUser(u);
       } catch {
@@ -133,19 +146,63 @@ export default function App() {
     }
   }, [scenario?.entities.length]);
 
+  useEffect(() => {
+    setGraphMode((scenario?.netObligations.length ?? 0) > 0 ? "netted" : "raw");
+  }, [scenario?.trip?.id, scenario?.netObligations.length]);
+
+  const applyEngineResult = useCallback(
+    async (opts?: { quiet?: boolean; toast?: string }) => {
+      const r = await client.runEngine();
+      setNettingResult(r);
+      setRailTypes(r.railTypesExercised);
+      setClaimModalToken(null);
+      setDetailId(null);
+      const s = await client.getScenario();
+      setScenario(s);
+      if (!opts?.quiet) {
+        notify(
+          opts?.toast ??
+            `Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers and routed them`,
+        );
+      }
+      setError(null);
+      return s;
+    },
+    [notify],
+  );
+
+  const rerouteIfNetsDropped = useCallback(
+    async (
+      hadTransfers: boolean,
+      next: ScenarioResponse | undefined,
+      msg: string,
+    ) => {
+      const stillNetted = (next?.netObligations.length ?? 0) > 0;
+      const debts = next?.debtEdges.length ?? 0;
+      if (hadTransfers && !stillNetted && debts > 0) {
+        try {
+          await applyEngineResult({ quiet: true });
+          notify(`${msg} · transfers re-routed`);
+          return;
+        } catch {
+          notify(`${msg} · run Net & route again`, "warn");
+          return;
+        }
+      }
+      notify(msg);
+    },
+    [applyEngineResult, notify],
+  );
+
   const handleDataAdded = useCallback(
     async (msg: string) => {
       const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
       setEditEntityId(null);
       setEditExpenseId(null);
       const next = await fetchScenario();
-      const stillNetted = (next?.netObligations.length ?? 0) > 0;
-      notify(
-        hadTransfers && !stillNetted ? `${msg} · run Net & route again` : msg,
-        hadTransfers && !stillNetted ? "warn" : "ok",
-      );
+      await rerouteIfNetsDropped(hadTransfers, next, msg);
     },
-    [fetchScenario, notify, scenario?.netObligations.length],
+    [fetchScenario, rerouteIfNetsDropped, scenario?.netObligations.length],
   );
 
   const handleClear = useCallback(async () => {
@@ -165,7 +222,7 @@ export default function App() {
       setNettingResult(null);
       setRailTypes([]);
       await fetchScenario();
-      notify("Cleared — add your own travelers & expenses");
+      notify("Cleared. Add your own travelers and expenses");
     } catch (e) {
       notify((e as Error).message, "warn");
     }
@@ -178,30 +235,30 @@ export default function App() {
       setEditExpenseId(null);
       setClaimModalToken(null);
       setDetailId(null);
-      setNettingResult(null);
-      setRailTypes([]);
-      await fetchScenario();
-      notify("Sample trip opened");
+      await applyEngineResult({
+        toast: "Sample trip opened with routed transfers",
+      });
     } catch (e) {
       notify((e as Error).message, "warn");
     }
-  }, [fetchScenario, notify]);
+  }, [applyEngineResult, notify]);
 
   const handleDeleteExpense = useCallback(
     async (id: string) => {
       if (!window.confirm("Remove this expense?")) return;
       try {
+        const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
         await client.deleteExpense(id);
         setEditExpenseId((cur) => (cur === id ? null : cur));
         setClaimModalToken(null);
         setDetailId(null);
-        await fetchScenario();
-        notify("Expense removed — debts recomputed");
+        const next = await fetchScenario();
+        await rerouteIfNetsDropped(hadTransfers, next, "Expense removed");
       } catch (e) {
         notify((e as Error).message, "warn");
       }
     },
-    [fetchScenario, notify],
+    [fetchScenario, notify, rerouteIfNetsDropped, scenario?.netObligations.length],
   );
 
   const handleDeleteTraveler = useCallback(
@@ -214,18 +271,19 @@ export default function App() {
         return;
       }
       try {
+        const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
         await client.deleteEntity(id);
         setEditEntityId((cur) => (cur === id ? null : cur));
         setEditExpenseId(null);
         setClaimModalToken(null);
         setDetailId(null);
-        await fetchScenario();
-        notify("Traveler removed");
+        const next = await fetchScenario();
+        await rerouteIfNetsDropped(hadTransfers, next, "Traveler removed");
       } catch (e) {
         notify((e as Error).message, "warn");
       }
     },
-    [fetchScenario, notify],
+    [fetchScenario, notify, rerouteIfNetsDropped, scenario?.netObligations.length],
   );
 
   const handleEngine = async () => {
@@ -235,17 +293,7 @@ export default function App() {
     }
     setLoading("engine");
     try {
-      const r = await client.runEngine();
-      setNettingResult(r);
-      setRailTypes(r.railTypesExercised);
-      setClaimModalToken(null);
-      setDetailId(null);
-      const s = await client.getScenario();
-      setScenario(s);
-      notify(
-        `Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers and routed them`,
-      );
-      setError(null);
+      await applyEngineResult();
     } catch (e) {
       notify((e as Error).message, "warn");
     } finally {
@@ -360,7 +408,7 @@ export default function App() {
         ...new Set(s.netObligations.map((o) => o.chosenRail).filter(Boolean)),
       ] as RailType[]);
       const rail = r.entity.linkedRailAliases[0]?.railType ?? "account";
-      notify(`${r.entity.name.trim()} linked ${rail} — transfers re-routed`);
+      notify(`${r.entity.name.trim()} linked ${rail}. Transfers re-routed`);
       setError(null);
     } catch (e) {
       notify((e as Error).message, "warn");
@@ -380,15 +428,13 @@ export default function App() {
     setLoading("reset");
     try {
       await client.seed();
-      notify("Sample trip loaded into this trip");
       setEditEntityId(null);
       setEditExpenseId(null);
       setClaimModalToken(null);
       setDetailId(null);
-      setNettingResult(null);
-      setRailTypes([]);
-      await fetchScenario();
-      setError(null);
+      await applyEngineResult({
+        toast: "Sample trip loaded with routed transfers",
+      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -477,7 +523,7 @@ export default function App() {
       try {
         await client.duplicateTrip(id);
         await switchTripView();
-        notify("Copied trip — nets not copied, run Net & route again");
+        notify("Copied trip. Nets were not copied. Run Net & route again");
       } catch (e) {
         setError((e as Error).message);
         setLoading(null);
@@ -654,12 +700,14 @@ export default function App() {
           }
         : null;
 
+  const showNettedGraph = hasNetted && graphMode === "netted";
+
   const graphBlock = (
     <Collapsible
-      key={`${scenario.trip?.id}-${hasNetted ? "netted" : "raw"}`}
+      key={`${scenario.trip?.id}-graph`}
       title="Who owes whom"
       sub={
-        hasNetted
+        showNettedGraph
           ? `${obligations.length} transfer${obligations.length === 1 ? "" : "s"}`
           : `${debtCount} IOU${debtCount === 1 ? "" : "s"}`
       }
@@ -668,12 +716,40 @@ export default function App() {
         railTypes.length > 0 ? <RailLegend types={railTypes} /> : undefined
       }
     >
+      {hasNetted && debtCount > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1">
+          <button
+            type="button"
+            aria-pressed={graphMode === "raw"}
+            onClick={() => setGraphMode("raw")}
+            className={`chip border transition-colors ${
+              graphMode === "raw"
+                ? "border-transparent bg-[var(--text)] text-[var(--bg)]"
+                : "border-white/[0.08] text-slate-400"
+            }`}
+          >
+            {debtCount} IOUs
+          </button>
+          <button
+            type="button"
+            aria-pressed={graphMode === "netted"}
+            onClick={() => setGraphMode("netted")}
+            className={`chip border transition-colors ${
+              graphMode === "netted"
+                ? "border-transparent bg-[var(--text)] text-[var(--bg)]"
+                : "border-white/[0.08] text-slate-400"
+            }`}
+          >
+            {obligations.length} transfers
+          </button>
+        </div>
+      )}
       <DebtGraph
-        key={`${scenario.trip?.id}-${hasNetted ? "netted" : "raw"}`}
+        key={`${scenario.trip?.id}-${showNettedGraph ? "netted" : "raw"}`}
         entities={scenario.entities}
         debtEdges={scenario.debtEdges}
         obligations={obligations}
-        mode={hasNetted ? "netted" : "raw"}
+        mode={showNettedGraph ? "netted" : "raw"}
         onOpenDetail={setDetailId}
       />
     </Collapsible>
@@ -834,13 +910,21 @@ export default function App() {
           />
         )}
 
+        {!tripEmpty && (
+          <TripSnapshot
+            name={scenario.trip?.name ?? "Trip"}
+            entities={scenario.entities}
+            expenses={scenario.expenses}
+          />
+        )}
+
         {!tripEmpty &&
           debtCount > 0 &&
           !hasNetted &&
           scenario.ledger.length > 0 && (
             <p className="animate-fade-in rounded-xl border border-[#c4a574]/25 bg-[#c4a574]/10 px-3.5 py-2.5 text-[13px] text-[#c4a574]">
-              Trip changed after settlement. Previous payouts stay in the log —
-              run Net & route again for the new balances.
+              Trip changed after settlement. Previous payouts stay in the log.
+              Run Net & route again for the new balances.
             </p>
           )}
 
@@ -850,17 +934,15 @@ export default function App() {
           </section>
         )}
 
-        {!tripEmpty && (
-          <TripBooks
-            entities={scenario.entities}
-            expenses={scenario.expenses}
-            debtEdges={scenario.debtEdges}
+        {hasNetted && nettingResult && (
+          <SettlementRecap
+            result={nettingResult}
             obligations={obligations}
-            fx={scenario.fx}
+            tripName={scenario.trip?.name ?? "Trip"}
+            entityOf={(id) => entityMap.get(id)}
+            onCopied={notify}
           />
         )}
-
-        {nettingResult && <ReductionStats result={nettingResult} />}
 
         {hasNetted && (
           <section className="animate-fade-in-up">
@@ -873,7 +955,14 @@ export default function App() {
                     : `${obligations.filter((o) => o.status !== "settled").length} to settle`}
                 </span>
               </h2>
-              <SharePlanButton plan={scenario.plan} onCopied={notify} />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <CopySlipsButton
+                  obligations={obligations}
+                  entityOf={(id) => entityMap.get(id)}
+                  onCopied={notify}
+                />
+                <SharePlanButton plan={scenario.plan} onCopied={notify} />
+              </div>
             </div>
             {scenario.plan?.insights && scenario.plan.insights.length > 0 && (
               <div className="mb-2.5">
@@ -948,8 +1037,15 @@ export default function App() {
 
         {!tripEmpty && (
           <>
-            {tripPanel}
+            <TripBooks
+              entities={scenario.entities}
+              expenses={scenario.expenses}
+              debtEdges={scenario.debtEdges}
+              obligations={obligations}
+              fx={scenario.fx}
+            />
             {(debtCount > 0 || hasNetted) && graphBlock}
+            {tripPanel}
           </>
         )}
 
@@ -1110,158 +1206,6 @@ function HeroIntro({
         </div>
       )}
       {form}
-    </section>
-  );
-}
-
-function useCountUp(target: number, duration = 700): number {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const start = performance.now();
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - start) / duration);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setVal(target * eased);
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return val;
-}
-
-function ReductionStats({
-  result,
-}: {
-  result: {
-    rawEdgeCount: number;
-    netEdgeCount: number;
-    reductionRatio: number;
-    transfersSaved: number;
-    rawTotalUsd: number;
-    netTotalUsd: number;
-    feeSavingsUsd: number;
-    greedyFeeUsd?: number;
-    corridorSavingsUsd?: number;
-    balances: { entityId: string; entityName: string; netUsd: number }[];
-  };
-}) {
-  const pct = Math.max(
-    6,
-    Math.round((result.netEdgeCount / Math.max(result.rawEdgeCount, 1)) * 100),
-  );
-  const saved = useCountUp(result.transfersSaved);
-  const fees = useCountUp(result.feeSavingsUsd);
-  const moved = useCountUp(result.netTotalUsd);
-  const corridor = useCountUp(result.corridorSavingsUsd ?? 0);
-  const [open, setOpen] = useState(true);
-  return (
-    <section className="glass animate-fade-in-up overflow-hidden rounded-2xl">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="hover:bg-white/[0.03] flex w-full items-center gap-3 px-4 py-3 text-left transition-colors sm:px-5"
-        aria-expanded={open}
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-slate-100 font-display text-[1.05rem] font-semibold tracking-[-0.03em]">
-            Netting saved {result.transfersSaved} transfer
-            {result.transfersSaved === 1 ? "" : "s"}
-          </p>
-          <p className="text-slate-500 mt-0.5 truncate text-xs">
-            {result.reductionRatio}× fewer payments · $
-            {result.feeSavingsUsd.toFixed(2)} fees saved
-            {(result.corridorSavingsUsd ?? 0) > 0
-              ? ` · $${result.corridorSavingsUsd!.toFixed(2)} vs Splitwise match`
-              : ""}
-          </p>
-        </div>
-        <span className="chip shrink-0 border border-[#9aaa8c]/25 bg-[#9aaa8c]/15 text-[#9aaa8c]">
-          ↓ {result.reductionRatio}×
-        </span>
-        <IconChevron
-          className={`text-slate-500 h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-      {open && (
-        <div className="px-4 pb-4 sm:px-5">
-          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display text-slate-50 tnum text-[1.65rem] font-semibold">
-                {Math.round(saved)}
-              </p>
-              <p className="section-title mt-0.5">transfers saved</p>
-            </div>
-            <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display tnum text-[1.65rem] font-semibold text-[#9aaa8c]">
-                ${fees.toFixed(2)}
-              </p>
-              <p className="section-title mt-0.5">est. fees saved</p>
-            </div>
-            <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display text-slate-200 tnum text-[1.65rem] font-semibold">
-                ${corridor.toFixed(2)}
-              </p>
-              <p className="section-title mt-0.5">vs Splitwise match</p>
-            </div>
-            <div className="bg-black/25 border-white/[0.05] rounded-xl border p-3 text-center">
-              <p className="font-display brand-text tnum text-[1.65rem] font-semibold">
-                ${moved.toFixed(2)}
-              </p>
-              <p className="section-title mt-0.5">
-                to move{" "}
-                <span className="text-slate-600 tracking-normal whitespace-nowrap normal-case line-through">
-                  ${result.rawTotalUsd.toFixed(0)}
-                </span>
-              </p>
-            </div>
-          </div>
-
-          <p className="text-slate-500 mb-4 text-[11px]">
-            Matched cheapest corridors first (local / SEPA / linked) instead of
-            largest-debtor → largest-creditor.
-            {(result.greedyFeeUsd ?? 0) > 0
-              ? ` Splitwise-style matching would have cost ~$${result.greedyFeeUsd!.toFixed(2)} in rail fees.`
-              : ""}{" "}
-            {booksCloseUsd(result.balances).closed
-              ? "Net balances sum to $0.00 — the books close."
-              : "Net balances should sum to $0.00."}
-          </p>
-
-          <div className="space-y-3">
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-slate-500 text-xs">
-                  Without netting · {result.rawEdgeCount} payments
-                </span>
-                <span className="text-slate-300 font-mono text-sm">
-                  {result.rawEdgeCount}
-                </span>
-              </div>
-              <div className="bg-white/[0.06] h-1.5 overflow-hidden rounded-sm">
-                <div className="bg-slate-500 h-full w-full" />
-              </div>
-            </div>
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-slate-500 text-xs">
-                  With LiteFX · {result.netEdgeCount} payments
-                </span>
-                <span className="text-slate-200 font-mono text-sm font-semibold">
-                  {result.netEdgeCount}
-                </span>
-              </div>
-              <div className="bg-white/[0.06] h-1.5 overflow-hidden rounded-sm">
-                <div
-                  className="h-full bg-[var(--text)] transition-all duration-700"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 }

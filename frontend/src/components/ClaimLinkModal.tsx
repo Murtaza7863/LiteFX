@@ -170,8 +170,7 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
                   </span>
                   {details.sender ? (
                     <>
-                      {" "}
-                      — from {details.sender.name.trim()} in{" "}
+                      . From {details.sender.name.trim()} in{" "}
                       {COUNTRY_NAMES[details.sender.country] ??
                         details.sender.country}
                       . Pick a{" "}
@@ -330,8 +329,8 @@ export function ClaimLinkModal({ token, onClose, onClaimed }: Props) {
             )}
 
             <p className="text-slate-600 mt-4 text-center text-[11px] leading-relaxed">
-              Mocked — in production this payout would settle via Wise, Stripe,
-              or a local rail.
+              Simulated. In a live product this payout would settle via Wise,
+              Stripe, or a local rail.
             </p>
           </>
         )}
@@ -354,7 +353,7 @@ function ClaimSendRow({
   const name = details.recipient.name.trim().split(" ")[0];
   const body = `Hi ${name}, you have ${amount} waiting on LiteFX. Claim it here (no account needed): ${url}`;
   const encoded = encodeURIComponent(body);
-  const subject = encodeURIComponent(`LiteFX payout — ${amount}`);
+  const subject = encodeURIComponent(`LiteFX payout · ${amount}`);
   const contact = details.recipient.contact;
   const emailTo =
     contact.type === "email" && contact.value.includes("@")

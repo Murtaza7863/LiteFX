@@ -2,7 +2,8 @@ import { useState } from "react";
 
 import type { Entity, NetObligation } from "../api/client";
 
-import { paymentSlip } from "../lib/paymentSlip";
+import { paymentSlip, railSummary } from "../lib/paymentSlip";
+import { vsCostliest } from "../lib/settlementRecap";
 import { countryFlag, RAIL_META } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { RailIcon, IconAlertTriangle } from "./icons";
@@ -52,6 +53,8 @@ export function ObligationCard({
   const rail = obligation.chosenRail;
   const meta = rail ? RAIL_META[rail] : null;
   const slip = paymentSlip(obligation, fromEntity, toEntity);
+  const pick = railSummary(obligation);
+  const saveVs = vsCostliest(obligation);
   const [copied, setCopied] = useState(false);
   const status =
     rail === "claim_link" &&
@@ -108,12 +111,25 @@ export function ObligationCard({
         </div>
         {meta && (
           <div
-            className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 ${meta.soft}`}
+            className={`flex max-w-[58%] flex-col items-end rounded-lg border px-2 py-1 ${meta.soft}`}
           >
-            <RailIcon type={rail!} className={`h-3.5 w-3.5 ${meta.text}`} />
-            <span className={`text-[11px] font-semibold ${meta.text}`}>
-              {meta.label}
+            <span
+              className={`flex items-center gap-1 text-[11px] font-semibold ${meta.text}`}
+            >
+              <RailIcon type={rail!} className={`h-3.5 w-3.5 ${meta.text}`} />
+              {pick.name}
             </span>
+            {pick.feePct != null && (
+              <span className="text-slate-500 text-[10px]">
+                {pick.feePct}%
+                {pick.feeUsd > 0 ? ` · $${pick.feeUsd.toFixed(2)}` : ""}
+              </span>
+            )}
+            {saveVs && (
+              <span className="text-[#9aaa8c] text-[10px]">
+                saves ${saveVs.savingsUsd.toFixed(2)} vs {saveVs.name}
+              </span>
+            )}
           </div>
         )}
       </div>

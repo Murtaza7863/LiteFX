@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { DebtEdge, Entity, NetObligation } from "../api/client";
 
-import { paymentSlip } from "../lib/paymentSlip";
+import { paymentSlip, railSummary } from "../lib/paymentSlip";
 import { RAIL_META, countryFlag } from "../lib/theme";
 import { Avatar } from "./Avatar";
 import { RailIcon, IconX } from "./icons";
@@ -28,8 +28,8 @@ export function ObligationDetail({
   onLink,
   busy = false,
 }: Props) {
-  const meta = obligation.chosenRail ? RAIL_META[obligation.chosenRail] : null;
   const slip = paymentSlip(obligation, fromEntity, toEntity);
+  const pick = railSummary(obligation);
   const [copied, setCopied] = useState(false);
   const canEdit = obligation.status !== "settled" && !busy;
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -101,7 +101,8 @@ export function ObligationDetail({
             <p className="text-slate-500 text-[11px]">
               {countryFlag(fromEntity.country)} {fromEntity.country} →{" "}
               {countryFlag(toEntity.country)} {toEntity.country}
-              {meta ? ` · ${meta.label}` : ""}
+              {` · ${pick.name}`}
+              {pick.feePct != null ? ` · ${pick.feePct}%` : ""}
             </p>
           </div>
         </div>
@@ -128,7 +129,7 @@ export function ObligationDetail({
               Est. time
             </p>
             <p className="text-slate-100 font-mono text-sm font-semibold">
-              {obligation.timeHours ?? "—"}h
+              {obligation.timeHours ?? "n/a"}h
             </p>
           </div>
         </div>
@@ -222,7 +223,12 @@ export function ObligationDetail({
                         {c.feeEstimatePct}%
                       </p>
                       <p className="text-slate-500 font-mono text-[10px]">
-                        {c.timeEstimateHours}h
+                        $
+                        {(
+                          (obligation.amountUsd * c.feeEstimatePct) /
+                          100
+                        ).toFixed(2)}{" "}
+                        · {c.timeEstimateHours}h
                       </p>
                       {canEdit && !c.chosen && eligible && onOverride && (
                         <button
@@ -256,7 +262,7 @@ export function ObligationDetail({
           </p>
           {consolidated.length === 0 ? (
             <p className="text-slate-500 text-xs">
-              No direct pairwise debts — this transfer arose from multilateral
+              No direct pairwise debts. This transfer arose from multilateral
               netting.
             </p>
           ) : (

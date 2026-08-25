@@ -36,6 +36,11 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
     try {
       const user = await client.demo();
       await client.seed({ asNew: true });
+      try {
+        await client.runEngine();
+      } catch {
+        /* seed without debts should not happen */
+      }
       onAuthed(user);
     } catch (e) {
       setError((e as Error).message);
@@ -60,7 +65,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
           </h1>
           <p className="mt-2.5 text-[15px] leading-7 text-[var(--muted)]">
             Nets messy IOUs into the fewest transfers, then picks a rail for
-            each corridor.{" "}
+            each corridor. The sample Bangkok trip is already routed.{" "}
             {isStaticEngine
               ? "This browser demo stays on this device."
               : "Your trips are saved to your account."}{" "}

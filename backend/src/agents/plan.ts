@@ -27,7 +27,7 @@ export function buildSettlementPlan(): SettlementPlan {
   const nameOf = (id: string) =>
     st.entities.find((e) => e.id === id)?.name.trim() || id;
 
-  const lines: string[] = [`LiteFX settlement plan — ${st.name}`];
+  const lines: string[] = [`LiteFX settlement plan · ${st.name}`];
   if (st.nettingSummary) {
     lines.push(
       `${st.nettingSummary.netEdgeCount} transfers (from ${st.nettingSummary.rawEdgeCount} pairwise debts)`,
@@ -42,7 +42,7 @@ export function buildSettlementPlan(): SettlementPlan {
     lines.push("No netted transfers yet. Run Net & route first.");
   } else {
     for (const ob of st.netObligations) {
-      const rail = ob.chosenRail ?? "unrouted";
+      const rail = obligationRailName(ob);
       const claim = ob.claimToken ? `  /claim/${ob.claimToken}` : "";
       lines.push(
         `${nameOf(ob.from)} → ${nameOf(ob.to)}  $${ob.amountUsd.toFixed(2)}  ${rail} (${ob.status})${claim}`,
@@ -58,6 +58,17 @@ export function buildSettlementPlan(): SettlementPlan {
   }
 
   return { text: lines.join("\n"), insights };
+}
+
+function obligationRailName(ob: {
+  chosenRail?: string;
+  considered?: { chosen?: boolean; railName: string }[];
+}): string {
+  const chosen = ob.considered?.find((c) => c.chosen);
+  if (chosen?.railName) return chosen.railName;
+  if (ob.chosenRail === "claim_link") return "claim link";
+  if (ob.chosenRail === "stable_bridge") return "USDC Bridge (Circle)";
+  return ob.chosenRail ?? "unrouted";
 }
 
 function buildInsights(): SettlementInsight[] {
@@ -107,7 +118,7 @@ function buildInsights(): SettlementInsight[] {
       wouldBeRailName: linked.railName,
       message: usesDomesticCorridor
         ? savingsUsd > 0
-          ? `If ${name} linked ${suggestedRail}, this payout would use ${linked.railName} (~${linked.feeEstimatePct}%) instead of a claim link (1%) — about $${savingsUsd.toFixed(2)} less in fees.`
+          ? `If ${name} linked ${suggestedRail}, this payout would use ${linked.railName} (~${linked.feeEstimatePct}%) instead of a claim link (1%). About $${savingsUsd.toFixed(2)} less in fees.`
           : `If ${name} linked ${suggestedRail}, they could be paid on ${linked.railName} instead of a claim link.`
         : `If ${name} linked a ${suggestedRail} account, this would settle over ${linked.railName} instead of a claim link. The sender would not pay via ${suggestedRail}.`,
     });

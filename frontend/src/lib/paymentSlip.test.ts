@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { classifyExpense } from "../../../backend/src/data/classifyExpense.ts";
-import { paymentSlip } from "./paymentSlip.ts";
+import { allSendSlips, paymentSlip, railSummary } from "./paymentSlip.ts";
 import type { Entity, NetObligation } from "../api/client.ts";
 import {
   COUNTRIES,
@@ -43,6 +43,49 @@ test("live titles classify the same way the form does", () => {
   assert.equal(classifyExpense("Grab to the airport").category, "transport");
   assert.equal(classifyExpense("Dinner at hawker").category, "food");
   assert.equal(classifyExpense("par").category, "general");
+});
+
+test("railSummary prefers the chosen considered row", () => {
+  const pick = railSummary(
+    obligation({
+      chosenRail: "local",
+      feeUsd: 0,
+      considered: [
+        {
+          type: "local",
+          railName: "PayNow",
+          feeEstimatePct: 0,
+          timeEstimateHours: 0,
+          chosen: true,
+          note: "same country",
+        },
+        {
+          type: "stable_bridge",
+          railName: "USDC Bridge (Circle)",
+          feeEstimatePct: 1.5,
+          timeEstimateHours: 24,
+          chosen: false,
+          note: "fallback",
+        },
+      ],
+    }),
+  );
+  assert.equal(pick.name, "PayNow");
+  assert.equal(pick.feePct, 0);
+  assert.equal(pick.feeUsd, 0);
+});
+
+test("allSendSlips joins each transfer", () => {
+  const text = allSendSlips(
+    [
+      obligation({ to: alice.id, chosenRail: "local" }),
+      obligation({ chosenRail: "claim_link" }),
+    ],
+    (id) => (id === alice.id ? alice : eve),
+  );
+  assert.match(text, /PayNow/);
+  assert.match(text, /claim link/i);
+  assert.equal(text.split("\n\n").length, 2);
 });
 
 test("payment slips name the rail, alias, and claim path", () => {

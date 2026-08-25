@@ -26,6 +26,51 @@ function corridorRailName(
   return undefined;
 }
 
+export function railSummary(obligation: NetObligation): {
+  name: string;
+  feePct: number | null;
+  feeUsd: number;
+} {
+  const chosen = obligation.considered?.find((c) => c.chosen);
+  if (chosen) {
+    return {
+      name: chosen.railName,
+      feePct: chosen.feeEstimatePct,
+      feeUsd: obligation.feeUsd ?? 0,
+    };
+  }
+  if (obligation.chosenRail === "claim_link") {
+    return { name: "Claim link", feePct: 1, feeUsd: obligation.feeUsd ?? 0 };
+  }
+  if (obligation.chosenRail === "stable_bridge") {
+    return {
+      name: "USDC Bridge (Circle)",
+      feePct: 1.5,
+      feeUsd: obligation.feeUsd ?? 0,
+    };
+  }
+  return {
+    name: obligation.chosenRail ?? "Unrouted",
+    feePct: null,
+    feeUsd: obligation.feeUsd ?? 0,
+  };
+}
+
+export function allSendSlips(
+  obligations: NetObligation[],
+  entityOf: (id: string) => Entity | undefined,
+): string {
+  return obligations
+    .map((o) => {
+      const from = entityOf(o.from);
+      const to = entityOf(o.to);
+      if (!from || !to) return null;
+      return paymentSlip(o, from, to).text;
+    })
+    .filter((line): line is string => !!line)
+    .join("\n\n");
+}
+
 export function paymentSlip(
   obligation: NetObligation,
   from: Entity,

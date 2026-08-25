@@ -25,6 +25,9 @@ test("sample trip has no claim-link insights because everyone has an account", (
   assert.match(plan.text, /Eve Lim/);
   assert.doesNotMatch(plan.text, /claim_link/);
   assert.equal(plan.insights.length, 0);
+  assert.match(plan.text, /PayNow/);
+  assert.match(plan.text, /settlement plan ·/);
+  assert.doesNotMatch(plan.text, / — /);
 });
 
 test("a Bahrain payer's claim insight does not treat PayNow as the corridor", () => {

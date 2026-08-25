@@ -338,12 +338,12 @@ export function AddDataForms({
       if (editExpense) {
         await client.updateExpense(editExpense.id, payload);
         resetExpenseForm();
-        onAdded("Updated expense — debts recomputed");
+        onAdded("Updated expense. Debts recomputed");
         closeForms();
       } else {
         await client.addExpense(payload);
         resetExpenseForm();
-        onAdded("Added expense — debts recomputed");
+        onAdded("Added expense. Debts recomputed");
         setOpen(null);
       }
     } catch (e) {

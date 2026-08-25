@@ -48,7 +48,7 @@ export function TripBooks({
         <p className="text-slate-500 text-[11px]">
           {closed
             ? "IOUs net to $0.00"
-            : "IOUs should net to $0 — check the amounts"}
+            : "IOUs should net to $0.00. Check the amounts"}
           {totalPaid > 0 ? ` · ${formatUsd(totalPaid)} spent` : ""}
         </p>
       </div>
