@@ -716,6 +716,9 @@ test("PATCH /auth/me stores country rails and POST /entities/me copies them", as
     }),
   });
   assert.equal(foreign.status, 400);
+  const afterFail = await json("/auth/me");
+  assert.equal(afterFail.status, 200);
+  assert.equal(afterFail.body.user.country, undefined);
   const saved = await json("/auth/me", {
     method: "PATCH",
     body: JSON.stringify({

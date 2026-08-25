@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { User } from "../api/client";
 
 import { client } from "../api/client";
-import { alignRailsToCountry, primaryRail } from "../lib/countries";
+import { alignRailsToCountry, countryByCode, primaryRail } from "../lib/countries";
 import { CountrySelect, type CountrySelectHandle } from "./CountrySelect";
 import { IconX } from "./icons";
 import {
@@ -17,16 +17,18 @@ export function PaymentProfileModal({
   onClose,
   onSaved,
   onAddMe,
+  onRefresh,
   onTrip,
 }: {
   user: User;
   onClose: () => void;
   onSaved: (user: User, msg: string) => void;
   onAddMe?: () => void;
+  onRefresh?: () => void;
   onTrip: boolean;
 }) {
-  const [country, setCountry] = useState(user.country ?? "SG");
-  const countryRef = useRef(user.country ?? "SG");
+  const [country, setCountry] = useState(user.country ?? "");
+  const countryRef = useRef(user.country ?? "");
   const countrySelectRef = useRef<CountrySelectHandle>(null);
   const [methods, setMethods] = useState<PaymentMethod[]>(
     user.linkedRailAliases?.length
@@ -34,7 +36,9 @@ export function PaymentProfileModal({
           railType: a.railType,
           alias: a.alias,
         }))
-      : [{ railType: primaryRail(user.country ?? "SG"), alias: "" }],
+      : user.country
+        ? [{ railType: primaryRail(user.country), alias: "" }]
+        : [],
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +55,11 @@ export function PaymentProfileModal({
 
   const persist = async (): Promise<boolean> => {
     const committed = countrySelectRef.current?.commit();
-    const code = committed || countryRef.current;
+    const code = countryRef.current || committed || "";
+    if (!countryByCode(code)) {
+      setError("Pick the country you get paid in.");
+      return false;
+    }
     const aligned = alignRailsToCountry(code, methods, true);
     const toSave =
       aligned.length > 0
@@ -122,7 +130,9 @@ export function PaymentProfileModal({
           onSubmit={(e) => {
             e.preventDefault();
             void persist().then((ok) => {
-              if (ok) onClose();
+              if (!ok) return;
+              onClose();
+              onRefresh?.();
             });
           }}
         >
@@ -153,7 +163,7 @@ export function PaymentProfileModal({
             {onAddMe && (
               <button
                 type="button"
-                disabled={busy || onTrip || !country}
+                disabled={busy || onTrip}
                 title={
                   onTrip
                     ? "You are already on this trip"

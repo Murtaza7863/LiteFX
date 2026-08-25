@@ -26,6 +26,8 @@ import {
   selectTrip,
   addUser,
   addMeToTrip,
+  findUserById,
+  rememberTraveler,
   updateUserProfile,
   updateEntity,
   updateExpense,
@@ -696,6 +698,7 @@ test("account payment methods stay in-country and add me copies them onto the tr
       linkedRailAliases: [{ railType: "PromptPay", alias: "+66" }],
     });
     assert.ok("error" in foreign);
+    assert.equal(findUserById("usr-ada")?.country, undefined);
     const saved = updateUserProfile("usr-ada", {
       country: "SG",
       linkedRailAliases: [
@@ -722,5 +725,92 @@ test("account payment methods stay in-country and add me copies them onto the tr
         ["UPI", "IMPS"].includes(a.railType),
       ),
     );
+  });
+});
+
+test("your payment profile does not overwrite a saved person with the same name", () => {
+  addUser({
+    id: "usr-ada",
+    email: "ada@x.test",
+    name: "Alice Tan",
+    passwordHash: "x",
+    createdAt: new Date().toISOString(),
+  });
+  runAsUser("usr-ada", () => {
+    const friend = createTraveler({
+      id: "ent-friend",
+      name: "Alice Tan",
+      country: "SG",
+      contact: { type: "phone", value: "+65-1111" },
+      linkedRailAliases: [{ railType: "PayNow", alias: "friend" }],
+    });
+    assert.equal("id" in friend, true);
+    const friendId = listContacts().find((c) => c.id !== "ppl-me")?.id;
+    assert.ok(friendId);
+    const saved = updateUserProfile("usr-ada", {
+      country: "SG",
+      linkedRailAliases: [{ railType: "PayNow", alias: "me" }],
+    });
+    assert.ok(!("error" in saved));
+    const mine = listContacts().find((c) => c.id === "ppl-me");
+    const other = listContacts().find((c) => c.id === friendId);
+    assert.equal(mine?.linkedRailAliases[0]?.alias, "me");
+    assert.equal(other?.linkedRailAliases[0]?.alias, "friend");
+  });
+});
+
+test("a new traveler with your name does not steal your saved rails", () => {
+  addUser({
+    id: "usr-ada",
+    email: "ada@x.test",
+    name: "Alice Tan",
+    passwordHash: "x",
+    createdAt: new Date().toISOString(),
+  });
+  runAsUser("usr-ada", () => {
+    const saved = updateUserProfile("usr-ada", {
+      country: "SG",
+      linkedRailAliases: [{ railType: "PayNow", alias: "me" }],
+    });
+    assert.ok(!("error" in saved));
+    const friend = createTraveler({
+      id: "ent-friend",
+      name: "Alice Tan",
+      country: "SG",
+      contact: { type: "phone", value: "+65-1111" },
+      linkedRailAliases: [{ railType: "PayNow", alias: "friend" }],
+    });
+    assert.equal("id" in friend, true, "error" in friend ? friend.error : "");
+    assert.equal(
+      listContacts().find((c) => c.id === "ppl-me")?.linkedRailAliases[0]
+        ?.alias,
+      "me",
+    );
+    assert.equal(findUserById("usr-ada")?.linkedRailAliases[0]?.alias, "me");
+  });
+});
+
+test("editing yourself on a trip writes the rails back to the account", () => {
+  addUser({
+    id: "usr-ada",
+    email: "ada@x.test",
+    name: "Ada Lovelace",
+    passwordHash: "x",
+    createdAt: new Date().toISOString(),
+  });
+  runAsUser("usr-ada", () => {
+    updateUserProfile("usr-ada", {
+      country: "SG",
+      linkedRailAliases: [{ railType: "PayNow", alias: "old" }],
+    });
+    const me = addMeToTrip();
+    assert.equal("id" in me, true);
+    if ("error" in me) throw new Error(me.error);
+    const updated = updateEntity(me.id, {
+      linkedRailAliases: [{ railType: "PayNow", alias: "new-id" }],
+    });
+    assert.ok(updated);
+    rememberTraveler(updated);
+    assert.equal(findUserById("usr-ada")?.linkedRailAliases[0]?.alias, "new-id");
   });
 });

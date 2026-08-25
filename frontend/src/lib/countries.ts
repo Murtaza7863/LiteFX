@@ -1,5 +1,6 @@
 export {
   COUNTRIES,
+  countryByCode,
   currencyOf as currencyFor,
   flagFromCode,
   railsFor,

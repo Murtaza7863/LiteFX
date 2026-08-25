@@ -833,19 +833,20 @@ export function updateUserProfile(
     } else {
       const code = String(patch.country).trim().toUpperCase();
       if (!countryByCode(code)) return { error: "Unsupported country." };
-      const countryChanged = u.country !== code;
-      u.country = code;
+      let nextRails: { railType: string; alias: string }[];
       if (patch.linkedRailAliases !== undefined) {
         const normalized = normalizeLinkedRails(code, patch.linkedRailAliases);
         if ("error" in normalized) return normalized;
-        u.linkedRailAliases = normalized.linkedRailAliases;
+        nextRails = normalized.linkedRailAliases;
       } else {
-        u.linkedRailAliases = alignRailsToCountry(
+        nextRails = alignRailsToCountry(
           code,
           u.linkedRailAliases ?? [],
-          countryChanged,
+          u.country !== code,
         );
       }
+      u.country = code;
+      u.linkedRailAliases = nextRails;
     }
   } else if (patch.linkedRailAliases !== undefined) {
     if (!u.country) {
@@ -861,12 +862,13 @@ export function updateUserProfile(
 }
 
 function persistProfileContact(u: UserRecord): void {
-  if (!u.country) return;
+  const country = u.country;
+  if (!country) return;
   const email = u.email.endsWith("@litefx.local") ? "" : u.email;
   upsertContact({
     id: ME_CONTACT_ID,
     name: u.name,
-    country: u.country,
+    country,
     contact: { type: "email", value: email },
     linkedRailAliases: u.linkedRailAliases ?? [],
   });
@@ -877,7 +879,7 @@ function persistProfileContact(u: UserRecord): void {
     runAsTrip(trip.id, () => {
       updateEntity(mine.id, {
         name: u.name,
-        country: u.country,
+        country,
         linkedRailAliases: u.linkedRailAliases ?? [],
         contact: { type: "email", value: email || mine.contact.value },
       });
@@ -1345,7 +1347,9 @@ export function upsertContact(person: {
   const byName = ws.contacts.find(
     (c) => contactKey(c.name, c.country) === contactKey(name, person.country),
   );
-  const existing = byId ?? byName;
+  const existing =
+    byId ??
+    (person.id || byName?.id === ME_CONTACT_ID ? undefined : byName);
   if (existing) {
     existing.name = name;
     existing.country = person.country;
@@ -1416,6 +1420,15 @@ export function rememberTraveler(entity: Entity): Entity {
     linkedRailAliases: entity.linkedRailAliases,
   });
   if ("error" in saved) return entity;
+  if (saved.id === ME_CONTACT_ID || entity.contactId === ME_CONTACT_ID) {
+    const u = findUserById(ownerId());
+    if (u) {
+      u.name = entity.name.trim() || u.name;
+      u.country = entity.country;
+      u.linkedRailAliases = structuredClone(entity.linkedRailAliases);
+      save();
+    }
+  }
   if (saved.id === entity.contactId) return entity;
   return (
     updateEntity(entity.id, { contactId: saved.id }) ?? {

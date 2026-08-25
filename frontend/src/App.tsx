@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -66,6 +67,7 @@ export default function App() {
   >([]);
   const [graphMode, setGraphMode] = useState<"raw" | "netted">("raw");
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const addMeLock = useRef(false);
 
   const notify = useCallback((msg: string, kind: "ok" | "warn" = "ok") => {
     const id = Date.now() + Math.random();
@@ -179,12 +181,31 @@ export default function App() {
   const handleDataAdded = useCallback(
     async (msg: string) => {
       const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
+      const editingMe =
+        !!editEntityId &&
+        scenario?.entities.some(
+          (e) => e.id === editEntityId && e.contactId === ME_CONTACT_ID,
+        );
       setEditEntityId(null);
       setEditExpenseId(null);
+      if (editingMe) {
+        try {
+          const u = await client.me();
+          if (u) setUser(u);
+        } catch {
+          /* keep the signed-in user */
+        }
+      }
       const next = await fetchScenario();
       await rerouteIfNetsDropped(hadTransfers, next, msg);
     },
-    [fetchScenario, rerouteIfNetsDropped, scenario?.netObligations.length],
+    [
+      editEntityId,
+      fetchScenario,
+      rerouteIfNetsDropped,
+      scenario?.entities,
+      scenario?.netObligations.length,
+    ],
   );
 
   const handleClear = useCallback(async () => {
@@ -429,13 +450,14 @@ export default function App() {
   const handleProfileSaved = useCallback(
     (next: User, msg: string) => {
       setUser(next);
-      void fetchScenario();
       notify(msg);
     },
-    [fetchScenario, notify],
+    [notify],
   );
 
   const handleAddMe = useCallback(async () => {
+    if (addMeLock.current) return;
+    addMeLock.current = true;
     try {
       const r = await client.addMe();
       const next = await fetchScenario();
@@ -449,6 +471,8 @@ export default function App() {
       const msg = (e as Error).message;
       if (/country|payment methods/i.test(msg)) setPaymentOpen(true);
       notify(msg, "warn");
+    } finally {
+      addMeLock.current = false;
     }
   }, [fetchScenario, notify, rerouteIfNetsDropped, scenario?.netObligations.length]);
 
@@ -1149,6 +1173,7 @@ export default function App() {
           onClose={() => setPaymentOpen(false)}
           onSaved={handleProfileSaved}
           onAddMe={() => void handleAddMe()}
+          onRefresh={() => void fetchScenario()}
           onTrip={scenario.entities.some((e) => e.contactId === ME_CONTACT_ID)}
         />
       )}

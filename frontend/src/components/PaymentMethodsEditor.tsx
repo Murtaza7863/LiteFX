@@ -1,4 +1,4 @@
-import { railsFor, aliasHint, primaryRail } from "../lib/countries";
+import { railsFor, aliasHint, primaryRail, countryByCode } from "../lib/countries";
 import { IconPlus, IconX } from "./icons";
 
 export type PaymentMethod = { railType: string; alias: string };
@@ -22,6 +22,16 @@ export function PaymentMethodsEditor({
   onChange: (next: PaymentMethod[]) => void;
   disabled?: boolean;
 }) {
+  if (!countryByCode(country)) {
+    return (
+      <div className="space-y-2 sm:col-span-2">
+        <p className="text-slate-500 text-[12px]">
+          Pick a country to see the rails that exist there.
+        </p>
+      </div>
+    );
+  }
+
   const rails = railsFor(country);
   const used = new Set(value.map((m) => m.railType));
   const unused = rails.filter((r) => !used.has(r));

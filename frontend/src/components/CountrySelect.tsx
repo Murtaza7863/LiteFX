@@ -52,6 +52,12 @@ export const CountrySelect = forwardRef<CountrySelectHandle, Props>(
     };
 
     const commitOpenQuery = () => {
+      const q = queryRef.current.trim();
+      if (!q && !valueRef.current) {
+        setOpen(false);
+        setQuery("");
+        return null;
+      }
       const code = countryToCommit(
         queryRef.current,
         matchesRef.current,
