@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { COUNTRIES, railsFor } from "./countries.ts";
-import { countryToCommit, filterCountries } from "./countryQuery.ts";
+import {
+  commitCountrySelection,
+  countryToCommit,
+  filterCountries,
+} from "./countryQuery.ts";
 import { railForCountry } from "./railPick.ts";
 
 test("typing each country's name or code commits that country", () => {
@@ -25,6 +29,30 @@ test("highlighting a country with an empty query still commits that row", () => 
   assert.equal(countryToCommit("", COUNTRIES, jp), "JP");
   assert.equal(countryToCommit("   ", COUNTRIES, jp), "JP");
   assert.equal(countryToCommit("zzzz-no-country", [], 0), null);
+});
+
+test("a closed picker keeps Singapore instead of falling back to Argentina", () => {
+  assert.equal(COUNTRIES[0]?.code, "AR");
+  assert.equal(
+    commitCountrySelection({
+      open: false,
+      query: "",
+      current: "SG",
+      matches: COUNTRIES,
+      active: 0,
+    }),
+    "SG",
+  );
+  assert.equal(
+    commitCountrySelection({
+      open: true,
+      query: "",
+      current: "",
+      matches: COUNTRIES,
+      active: 0,
+    }),
+    null,
+  );
 });
 
 test("a leftover rail from any country maps onto a real rail of the destination", () => {

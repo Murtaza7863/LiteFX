@@ -6,15 +6,15 @@ A group trip splitter for people who paid in different countries. LiteFX nets th
 
 ## 3-minute demo
 
-Record against the live demo. It starts empty so you add your own people. Load the Bangkok sample only if you want a crew already filled in; hit **Net & route** yourself.
+Record against the live demo. The Bangkok crew and expenses are already there so you are not typing receipts. Transfers are not routed until you hit **Net & route**.
 
-1. **0:00 Problem.** Friends in different countries split a trip in mixed currencies. Splitwise leaves a web of IOUs, then everyone pays the expensive way.
-2. **0:20 Your rails.** Open the avatar menu → **Payment methods**. Pick your country. Add the rails that exist there (PayNow and FAST in Singapore, UPI in India, Pix in Brazil) and the IDs a sender needs. Save, then **Add me to this trip**.
-3. **0:50 Crew.** Add friends the same way: country, then only that country's rails plus an alias. Or tap **Load sample** for Alice, Bob, Charlie, and the rest, then Net & route.
-4. **1:20 Route.** Add a shared expense if you started empty. Hit **Net & route**. Open a transfer: the chip is a real rail, not "local". Toggle **Try another rail** and watch the fee in dollars change.
-5. **1:50 Remap.** Edit Bob, move him from Thailand to Japan, Save. PromptPay cannot follow him. Run Net & route again if the graph dropped.
-6. **2:10 Claim link.** Edit a traveler, remove every rail, Save. Their payout becomes a claim link. Open it and pick a local payout. The sender never uses their domestic rail.
-7. **2:35 Close.** Copy slips, settle a local transfer. Every rail is simulated. No bank, card, or chain calls.
+1. **0:00 Problem.** Friends in SG, TH, US, and DE split a Bangkok trip in THB, SGD, and USD. Splitwise would leave a web of IOUs, then everyone pays the expensive way.
+2. **0:20 Your rails.** Avatar menu → **Payment methods**. Pick your country, add the rails that exist there, and the IDs a sender needs. Save, then **Add me to this trip**.
+3. **0:50 Route.** Hit **Net & route**. Show the scoreboard: pairwise IOUs collapsed into a few transfers. Open a transfer: the chip is a real rail (PromptPay, PayNow, USDC), not "local". Toggle **Try another rail** and watch the fee in dollars change.
+4. **1:20 Remap.** Edit Bob, move him from Thailand to Japan, Save. PromptPay cannot follow him. Run Net & route again if the graph dropped.
+5. **1:50 Claim link.** Edit a traveler, remove every rail, Save. Their payout becomes a claim link. Open it and pick a local payout. The sender never uses their domestic rail.
+6. **2:20 Settle.** Copy slips, settle a local transfer, flip **Who owes whom** from IOUs to transfers. Trip books should still net to $0.00.
+7. **2:45 Close.** Every rail is simulated. No bank, card, or chain calls.
 
 ## What it can do
 

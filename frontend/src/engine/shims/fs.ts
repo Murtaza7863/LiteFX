@@ -1,4 +1,5 @@
-const KEY = "litefx-db-v2";
+export const LITEFX_DB_KEY = "litefx-db-v3";
+const KEY = LITEFX_DB_KEY;
 const mem = new Map<string, string>();
 
 function readLS(): string | null {

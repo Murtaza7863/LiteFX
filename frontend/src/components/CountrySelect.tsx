@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import { COUNTRIES } from "../lib/countries";
-import { countryToCommit, filterCountries } from "../lib/countryQuery";
+import { commitCountrySelection, filterCountries } from "../lib/countryQuery";
 import { countryFlag } from "../lib/theme";
 
 interface Props {
@@ -47,22 +47,23 @@ export const CountrySelect = forwardRef<CountrySelectHandle, Props>(
 
     const pick = (code: string) => {
       onChange(code);
+      const idx = COUNTRIES.findIndex((c) => c.code === code);
+      activeRef.current = idx >= 0 ? idx : 0;
+      openRef.current = false;
+      valueRef.current = code;
+      setActive(activeRef.current);
       setOpen(false);
       setQuery("");
     };
 
     const commitOpenQuery = () => {
-      const q = queryRef.current.trim();
-      if (!q && !valueRef.current) {
-        setOpen(false);
-        setQuery("");
-        return null;
-      }
-      const code = countryToCommit(
-        queryRef.current,
-        matchesRef.current,
-        activeRef.current,
-      );
+      const code = commitCountrySelection({
+        open: true,
+        query: queryRef.current,
+        current: valueRef.current,
+        matches: matchesRef.current,
+        active: activeRef.current,
+      });
       if (code) onChangeRef.current(code);
       setOpen(false);
       setQuery("");
@@ -138,6 +139,7 @@ export const CountrySelect = forwardRef<CountrySelectHandle, Props>(
             }}
             onBlur={() => {
               requestAnimationFrame(() => {
+                if (!openRef.current) return;
                 if (!root.current?.contains(document.activeElement)) {
                   commitOpenQuery();
                 }
@@ -162,6 +164,7 @@ export const CountrySelect = forwardRef<CountrySelectHandle, Props>(
                 e.preventDefault();
                 pick(matches[active].code);
               } else if (e.key === "Escape") {
+                openRef.current = false;
                 setOpen(false);
                 setQuery("");
               }

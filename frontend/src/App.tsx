@@ -46,6 +46,7 @@ import { TripSnapshot } from "./components/TripSnapshot";
 import { TripSwitcher } from "./components/TripSwitcher";
 import { ME_CONTACT_ID } from "./lib/countries";
 import { RAIL_META } from "./lib/theme";
+import { LITEFX_DB_KEY } from "./engine/shims/fs";
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
@@ -115,7 +116,16 @@ export default function App() {
         let u = await client.me();
         // GitHub Pages has no API — open a demo session on this device.
         if (!u && isStaticEngine) {
+          let hadDb = false;
+          try {
+            hadDb = localStorage.getItem(LITEFX_DB_KEY) != null;
+          } catch {
+            /* private mode */
+          }
           u = await client.demo();
+          if (!hadDb) {
+            await client.seed();
+          }
         }
         setUser(u);
       } catch {

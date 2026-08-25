@@ -35,6 +35,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
     setError(null);
     try {
       const user = await client.demo();
+      await client.seed({ asNew: true });
       onAuthed(user);
     } catch (e) {
       setError((e as Error).message);
@@ -59,8 +60,8 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
           </h1>
           <p className="mt-2.5 text-[15px] leading-7 text-[var(--muted)]">
             Nets messy IOUs into the fewest transfers, then picks a rail for
-            each corridor. Start empty, add the payment types you use in your
-            country, and route when you are ready.{" "}
+            each corridor. The sample Bangkok trip is loaded with people and
+            expenses; you add your rails and hit Net & route.{" "}
             {isStaticEngine
               ? "This browser demo stays on this device."
               : "Your trips are saved to your account."}{" "}
@@ -73,7 +74,7 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
             onClick={() => void demo()}
             className="btn-primary mt-6 w-full"
           >
-            {busy ? "Opening…" : "Start a trip"}
+            {busy ? "Opening…" : "Open the sample trip"}
           </button>
           {!isStaticEngine && mode === "hidden" ? (
             <p className="mt-5 text-center text-sm text-[var(--muted)]">

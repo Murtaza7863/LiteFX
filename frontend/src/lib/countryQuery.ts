@@ -29,3 +29,19 @@ export function countryToCommit(
 ): string | null {
   return matches[active]?.code ?? null;
 }
+
+/**
+ * Closed picker: keep the current country. Open picker with nothing typed and
+ * no current country: do not fall through to the first row (Argentina).
+ */
+export function commitCountrySelection(opts: {
+  open: boolean;
+  query: string;
+  current: string;
+  matches: { code: string }[];
+  active: number;
+}): string | null {
+  if (!opts.open) return opts.current || null;
+  if (!opts.query.trim() && !opts.current) return null;
+  return countryToCommit(opts.query, opts.matches, opts.active);
+}
