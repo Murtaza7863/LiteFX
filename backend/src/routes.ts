@@ -30,6 +30,8 @@ import {
   selectTrip,
   renameTrip,
   deleteTrip,
+  updateUserProfile,
+  addMeToTrip,
 } from "./store";
 import { FX_TABLE } from "./types";
 import type { Expense } from "./types";
@@ -37,6 +39,8 @@ import {
   canonicalizeRail,
   countryByCode,
   linkedAliasesFromUpdate,
+  normalizeLinkedRails,
+  ME_CONTACT_ID,
 } from "./data/countries";
 import { classifyExpense, isExpenseCategory } from "./data/classifyExpense";
 import { getFxSnapshot } from "./fx";
@@ -151,6 +155,36 @@ apiRouter.get("/auth/me", (req, res) => {
     return;
   }
   res.json({ success: true, user });
+});
+
+apiRouter.patch("/auth/me", (req, res) => {
+  const session = currentUser(req);
+  if (!session) {
+    res.status(401).json({ success: false, message: "Sign in required." });
+    return;
+  }
+  const { country, linkedRailAliases } = req.body as {
+    country?: string | null;
+    linkedRailAliases?: { railType: string; alias: string }[];
+  };
+  const wasNetted = getStore().netObligations.length > 0;
+  const result = updateUserProfile(session.id, {
+    country,
+    linkedRailAliases,
+  });
+  if ("error" in result) {
+    res.status(400).json({ success: false, message: result.error });
+    return;
+  }
+  const mine = getStore().entities.find((e) => e.contactId === ME_CONTACT_ID);
+  if (mine && wasNetted && getStore().debtEdges.length > 0) {
+    if (getStore().netObligations.length === 0) {
+      rebuildSettlement();
+    } else {
+      rerouteUnsettled({ to: mine.id });
+    }
+  }
+  res.json({ success: true, user: result });
 });
 
 apiRouter.post("/auth/demo", async (req, res) => {
@@ -316,6 +350,21 @@ apiRouter.get("/scenario", (_req, res) => {
   });
 });
 
+// ── POST /api/entities/me — add the signed-in user's profile to this trip ──
+apiRouter.post("/entities/me", (_req, res) => {
+  const result = addMeToTrip();
+  if ("error" in result) {
+    const status = /already/i.test(result.error)
+      ? 409
+      : /sign in/i.test(result.error)
+        ? 401
+        : 400;
+    res.status(status).json({ success: false, message: result.error });
+    return;
+  }
+  res.json({ success: true, entity: result });
+});
+
 // ── POST /api/entities — add a traveler ──
 apiRouter.post("/entities", (req, res) => {
   const {
@@ -325,6 +374,7 @@ apiRouter.post("/entities", (req, res) => {
     railType,
     alias,
     contactId,
+    linkedRailAliases,
   } = req.body as {
     name?: string;
     country?: string;
@@ -332,6 +382,7 @@ apiRouter.post("/entities", (req, res) => {
     railType?: string;
     alias?: string;
     contactId?: string;
+    linkedRailAliases?: { railType: string; alias: string }[];
   };
   if (contactId) {
     const result = addEntityFromContact(contactId);
@@ -364,11 +415,22 @@ apiRouter.post("/entities", (req, res) => {
     return;
   }
   const rail = canonicalizeRail(country, railType);
-  if (railType?.trim() && !rail) {
+  if (railType?.trim() && !rail && !Array.isArray(linkedRailAliases)) {
     res
       .status(400)
       .json({ success: false, message: "Unsupported settlement rail." });
     return;
+  }
+  let aliases: { railType: string; alias: string }[] = [];
+  if (Array.isArray(linkedRailAliases)) {
+    const normalized = normalizeLinkedRails(country, linkedRailAliases);
+    if ("error" in normalized) {
+      res.status(400).json({ success: false, message: normalized.error });
+      return;
+    }
+    aliases = normalized.linkedRailAliases;
+  } else if (rail) {
+    aliases = [{ railType: rail, alias: alias || "" }];
   }
   const parsedContact = parseContact(contact);
   if ("error" in parsedContact) {
@@ -380,7 +442,7 @@ apiRouter.post("/entities", (req, res) => {
     name,
     country,
     contact: parsedContact,
-    linkedRailAliases: rail ? [{ railType: rail, alias: alias || "" }] : [],
+    linkedRailAliases: aliases,
   });
   if ("error" in result) {
     const status = result.error.includes("already") ? 409 : 400;
@@ -397,13 +459,15 @@ apiRouter.patch("/entities/:id", (req, res) => {
     res.status(404).json({ success: false, message: "Traveler not found." });
     return;
   }
-  const { name, country, contact, railType, alias } = req.body as {
-    name?: string;
-    country?: string;
-    contact?: { type: string; value: string };
-    railType?: string | null;
-    alias?: string;
-  };
+  const { name, country, contact, railType, alias, linkedRailAliases } =
+    req.body as {
+      name?: string;
+      country?: string;
+      contact?: { type: string; value: string };
+      railType?: string | null;
+      alias?: string;
+      linkedRailAliases?: { railType: string; alias: string }[] | null;
+    };
   if (country !== undefined && !countryByCode(country)) {
     res.status(400).json({ success: false, message: "Unsupported country." });
     return;
@@ -441,6 +505,7 @@ apiRouter.patch("/entities/:id", (req, res) => {
     country,
     railType,
     alias,
+    linkedRailAliases,
   });
   if ("error" in rails) {
     res.status(400).json({ success: false, message: rails.error });

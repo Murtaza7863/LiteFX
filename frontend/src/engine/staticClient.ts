@@ -13,6 +13,8 @@ import {
   canonicalizeRail,
   countryByCode,
   linkedAliasesFromUpdate,
+  normalizeLinkedRails,
+  ME_CONTACT_ID,
 } from "../../../backend/src/data/countries";
 import {
   classifyExpense,
@@ -37,6 +39,7 @@ import {
 import {
   addEntityFromContact,
   addExpense,
+  addMeToTrip,
   addUser,
   clearStore,
   createTraveler,
@@ -65,6 +68,7 @@ import {
   travelerOnTrip,
   updateEntity,
   updateExpense,
+  updateUserProfile,
   validateExpenseSplit,
   withClaimTrip,
   type UserRecord,
@@ -354,6 +358,7 @@ export const staticClient = {
     country?: string;
     railType?: string;
     alias?: string;
+    linkedRailAliases?: { railType: string; alias: string }[];
     contact?: { type: "email" | "phone"; value: string };
     contactId?: string;
   }) => {
@@ -375,17 +380,26 @@ export const staticClient = {
         throw new Error("Unsupported country.");
       }
       const rail = canonicalizeRail(body.country, body.railType);
-      if (body.railType?.trim() && !rail) {
+      if (body.railType?.trim() && !rail && !Array.isArray(body.linkedRailAliases)) {
         throw new Error("Unsupported settlement rail.");
+      }
+      let aliases: { railType: string; alias: string }[] = [];
+      if (Array.isArray(body.linkedRailAliases)) {
+        const normalized = normalizeLinkedRails(
+          body.country,
+          body.linkedRailAliases,
+        );
+        if ("error" in normalized) throw new Error(normalized.error);
+        aliases = normalized.linkedRailAliases;
+      } else if (rail) {
+        aliases = [{ railType: rail, alias: body.alias || "" }];
       }
       const result = createTraveler({
         id: `ent-u${Math.random().toString(36).slice(2, 7)}`,
         name,
         country: body.country,
         contact: validContact(body.contact),
-        linkedRailAliases: rail
-          ? [{ railType: rail, alias: body.alias || "" }]
-          : [],
+        linkedRailAliases: aliases,
       });
       if ("error" in result) throw new Error(result.error);
       return { success: true, entity: result };
@@ -411,6 +425,7 @@ export const staticClient = {
       country?: string;
       railType?: string | null;
       alias?: string;
+      linkedRailAliases?: { railType: string; alias: string }[] | null;
       contact?: { type: "email" | "phone"; value: string };
     },
   ) => {
@@ -444,6 +459,7 @@ export const staticClient = {
         country: body.country,
         railType: body.railType,
         alias: body.alias,
+        linkedRailAliases: body.linkedRailAliases,
       });
       if ("error" in rails) throw new Error(rails.error);
       if (rails.linkedRailAliases) {
@@ -558,15 +574,49 @@ export const staticClient = {
       entities: getStore().entities,
     }));
   },
+  addMe: async () => {
+    await boot();
+    return asUser(() => {
+      const result = addMeToTrip();
+      if ("error" in result) throw new Error(result.error);
+      return { success: true as const, entity: result };
+    });
+  },
+  updateProfile: async (body: {
+    country?: string | null;
+    linkedRailAliases?: { railType: string; alias: string }[];
+  }) => {
+    await boot();
+    const session = sessionUser();
+    if (!session) throw new Error("Sign in required.");
+    return asUser(() => {
+      const wasNetted = getStore().netObligations.length > 0;
+      const result = updateUserProfile(session.id, body);
+      if ("error" in result) throw new Error(result.error);
+      const mine = getStore().entities.find((e) => e.contactId === ME_CONTACT_ID);
+      if (mine && wasNetted && getStore().debtEdges.length > 0) {
+        if (getStore().netObligations.length === 0) {
+          rebuildSettlement();
+        } else {
+          rerouteUnsettled({ to: mine.id });
+        }
+      }
+      setSession(result);
+      return { success: true as const, user: result };
+    });
+  },
   me: async (): Promise<User | null> => {
     await boot();
     const user = sessionUser();
     if (!user) return null;
-    if (!findUserById(user.id)) {
+    const record = findUserById(user.id);
+    if (!record) {
       setSession(null);
       return null;
     }
-    return user;
+    const fresh = toPublicUser(record);
+    setSession(fresh);
+    return fresh;
   },
   signup: async (_body: { name: string; email: string; password: string }) => {
     throw new Error("Accounts are available on the server deployment.");

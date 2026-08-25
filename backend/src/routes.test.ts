@@ -704,3 +704,63 @@ test("saved people persist across trips and reject duplicates", async () => {
   assert.equal(copyScene.body.entities.length, 1);
   assert.equal(copyScene.body.entities[0].name, "Sam");
 });
+
+test("PATCH /auth/me stores country rails and POST /entities/me copies them", async () => {
+  const denied = await json("/entities/me", { method: "POST" });
+  assert.equal(denied.status, 400);
+  const foreign = await json("/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify({
+      country: "SG",
+      linkedRailAliases: [{ railType: "PromptPay", alias: "+66" }],
+    }),
+  });
+  assert.equal(foreign.status, 400);
+  const saved = await json("/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify({
+      country: "SG",
+      linkedRailAliases: [
+        { railType: "PayNow", alias: "+6590000000" },
+        { railType: "FAST", alias: "123-456" },
+      ],
+    }),
+  });
+  assert.equal(saved.status, 200, saved.body.message);
+  assert.equal(saved.body.user.country, "SG");
+  assert.equal(saved.body.user.linkedRailAliases.length, 2);
+  const me = await json("/auth/me");
+  assert.equal(me.body.user.linkedRailAliases[1].alias, "123-456");
+  const added = await json("/entities/me", { method: "POST" });
+  assert.equal(added.status, 200, added.body.message);
+  assert.equal(added.body.entity.contactId, "ppl-me");
+  assert.equal(added.body.entity.linkedRailAliases[0].alias, "+6590000000");
+  const again = await json("/entities/me", { method: "POST" });
+  assert.equal(again.status, 409);
+});
+
+test("POST /entities rejects a foreign rail and accepts several domestic ones", async () => {
+  const bad = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Sam",
+      country: "SG",
+      linkedRailAliases: [{ railType: "PromptPay", alias: "+66" }],
+    }),
+  });
+  assert.equal(bad.status, 400);
+  const ok = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Sam",
+      country: "SG",
+      linkedRailAliases: [
+        { railType: "PayNow", alias: "+6591110000" },
+        { railType: "FAST", alias: "001-1" },
+      ],
+    }),
+  });
+  assert.equal(ok.status, 200, ok.body.message);
+  assert.equal(ok.body.entity.linkedRailAliases.length, 2);
+  assert.equal(ok.body.entity.linkedRailAliases[1].railType, "FAST");
+});

@@ -24,7 +24,12 @@ import type {
 import { toUsd } from "./types.js";
 import { getFxSnapshot } from "./fx.js";
 import { SEED_ENTITIES, SEED_EXPENSES, SEED_INVOICES } from "./data/seed.js";
-import { alignRailsToCountry } from "./data/countries.js";
+import {
+  alignRailsToCountry,
+  countryByCode,
+  ME_CONTACT_ID,
+  normalizeLinkedRails,
+} from "./data/countries.js";
 
 // ──────────────────────────────────────────────
 // File-backed store. Each user owns a workspace of
@@ -72,6 +77,8 @@ export interface UserRecord {
   name: string;
   passwordHash: string;
   createdAt: string;
+  country?: string;
+  linkedRailAliases?: { railType: string; alias: string }[];
 }
 
 export interface SessionRecord {
@@ -86,6 +93,8 @@ export interface PublicUser {
   id: string;
   email: string;
   name: string;
+  country?: string;
+  linkedRailAliases?: { railType: string; alias: string }[];
 }
 
 export interface TripRecord extends StoreState {
@@ -307,7 +316,21 @@ function restoreSampleAccounts(trip: StoreState): boolean {
   return changed;
 }
 
+function coerceUser(u: UserRecord): UserRecord {
+  const country =
+    typeof u.country === "string" && countryByCode(u.country)
+      ? u.country.toUpperCase()
+      : undefined;
+  const linked = Array.isArray(u.linkedRailAliases)
+    ? country
+      ? alignRailsToCountry(country, u.linkedRailAliases, false)
+      : []
+    : [];
+  return { ...u, country, linkedRailAliases: linked };
+}
+
 function finishApp(state: AppState): AppState {
+  state.users = (state.users ?? []).map(coerceUser);
   if ((state.sampleAccounts ?? 0) >= SAMPLE_ACCOUNTS) return state;
   for (const ws of Object.values(state.workspaces)) {
     for (const trip of Object.values(ws.trips)) restoreSampleAccounts(trip);
@@ -784,7 +807,93 @@ export function resetApp(): void {
 }
 
 export function toPublicUser(u: UserRecord): PublicUser {
-  return { id: u.id, email: u.email, name: u.name };
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    country: u.country,
+    linkedRailAliases: u.linkedRailAliases ?? [],
+  };
+}
+
+export function updateUserProfile(
+  userId: string,
+  patch: {
+    country?: string | null;
+    linkedRailAliases?: { railType: string; alias: string }[];
+  },
+): PublicUser | { error: string } {
+  initStore();
+  const u = findUserById(userId);
+  if (!u) return { error: "Account not found." };
+  if (patch.country !== undefined) {
+    if (patch.country == null || !String(patch.country).trim()) {
+      u.country = undefined;
+      u.linkedRailAliases = [];
+    } else {
+      const code = String(patch.country).trim().toUpperCase();
+      if (!countryByCode(code)) return { error: "Unsupported country." };
+      const countryChanged = u.country !== code;
+      u.country = code;
+      if (patch.linkedRailAliases !== undefined) {
+        const normalized = normalizeLinkedRails(code, patch.linkedRailAliases);
+        if ("error" in normalized) return normalized;
+        u.linkedRailAliases = normalized.linkedRailAliases;
+      } else {
+        u.linkedRailAliases = alignRailsToCountry(
+          code,
+          u.linkedRailAliases ?? [],
+          countryChanged,
+        );
+      }
+    }
+  } else if (patch.linkedRailAliases !== undefined) {
+    if (!u.country) {
+      return { error: "Set your country before adding payment methods." };
+    }
+    const normalized = normalizeLinkedRails(u.country, patch.linkedRailAliases);
+    if ("error" in normalized) return normalized;
+    u.linkedRailAliases = normalized.linkedRailAliases;
+  }
+  persistProfileContact(u);
+  save();
+  return toPublicUser(u);
+}
+
+function persistProfileContact(u: UserRecord): void {
+  if (!u.country) return;
+  const email = u.email.endsWith("@litefx.local") ? "" : u.email;
+  upsertContact({
+    id: ME_CONTACT_ID,
+    name: u.name,
+    country: u.country,
+    contact: { type: "email", value: email },
+    linkedRailAliases: u.linkedRailAliases ?? [],
+  });
+  const ws = ensureWorkspace(u.id);
+  for (const trip of Object.values(ws.trips)) {
+    const mine = trip.entities.find((e) => e.contactId === ME_CONTACT_ID);
+    if (!mine) continue;
+    runAsTrip(trip.id, () => {
+      updateEntity(mine.id, {
+        name: u.name,
+        country: u.country,
+        linkedRailAliases: u.linkedRailAliases ?? [],
+        contact: { type: "email", value: email || mine.contact.value },
+      });
+    });
+  }
+}
+
+export function addMeToTrip(): Entity | { error: string } {
+  initStore();
+  const u = findUserById(ownerId());
+  if (!u) return { error: "Sign in required." };
+  if (!u.country || !countryByCode(u.country)) {
+    return { error: "Set your country in Payment methods first." };
+  }
+  persistProfileContact(u);
+  return addEntityFromContact(ME_CONTACT_ID);
 }
 
 export function findUserByEmail(email: string): UserRecord | undefined {
@@ -1254,7 +1363,7 @@ export function upsertContact(person: {
     return { error: `You can save up to ${MAX_CONTACTS} people.` };
   }
   const saved: SavedContact = {
-    id: `ppl-${Math.random().toString(36).slice(2, 10)}`,
+    id: person.id?.trim() || `ppl-${Math.random().toString(36).slice(2, 10)}`,
     name,
     country: person.country,
     contact: person.contact,

@@ -6,6 +6,22 @@ import {
   sharedLocalRail,
 } from "../../../backend/src/data/countries";
 
+function sendAlias(to: Entity, railName?: string): string {
+  if (railName) {
+    const want = railName.trim().toLowerCase();
+    const match = to.linkedRailAliases.find((a) => {
+      const canonical = canonicalizeRail(to.country, a.railType);
+      return (
+        a.railType.toLowerCase() === want ||
+        (canonical != null && canonical.toLowerCase() === want)
+      );
+    });
+    if (match?.alias.trim()) return match.alias.trim();
+  }
+  const first = to.linkedRailAliases.find((a) => a.alias.trim());
+  return first?.alias.trim() || to.contact.value || to.name.trim();
+}
+
 function corridorRailName(
   type: NetObligation["chosenRail"],
   from: Entity,
@@ -80,8 +96,12 @@ export function paymentSlip(
     maximumFractionDigits: 2,
   })} ${obligation.settlementCurrency}`;
   const ref = `LiteFX ${obligation.id}`;
-  const alias =
-    to.linkedRailAliases[0]?.alias || to.contact.value || to.name.trim();
+  const pick = railSummary(obligation);
+  const railName =
+    pick.name !== "Unrouted" && pick.name !== obligation.chosenRail
+      ? pick.name
+      : corridorRailName(obligation.chosenRail, from, to);
+  const alias = sendAlias(to, railName);
   const payer = from.name.trim();
   const payee = to.name.trim();
 
@@ -92,7 +112,6 @@ export function paymentSlip(
     };
   }
 
-  const railName = corridorRailName(obligation.chosenRail, from, to);
   if (
     obligation.chosenRail === "stable_bridge" ||
     (obligation.chosenRail && !railName)

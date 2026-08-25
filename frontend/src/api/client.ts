@@ -216,6 +216,8 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  country?: string;
+  linkedRailAliases?: { railType: string; alias: string }[];
 }
 
 import { staticClient } from "../engine/staticClient";
@@ -290,6 +292,7 @@ export const httpClient = {
     country?: string;
     railType?: string;
     alias?: string;
+    linkedRailAliases?: { railType: string; alias: string }[];
     contact?: { type: "email" | "phone"; value: string };
     contactId?: string;
   }) => api<{ success: boolean; entity: Entity }>("/entities", "POST", body),
@@ -312,6 +315,7 @@ export const httpClient = {
       country?: string;
       railType?: string | null;
       alias?: string;
+      linkedRailAliases?: { railType: string; alias: string }[] | null;
       contact?: { type: "email" | "phone"; value: string };
     },
   ) =>
@@ -411,6 +415,12 @@ export const httpClient = {
     return r.user;
   },
   logout: () => api<{ success: boolean }>("/auth/logout", "POST"),
+  updateProfile: (body: {
+    country?: string | null;
+    linkedRailAliases?: { railType: string; alias: string }[];
+  }) => api<{ success: boolean; user: User }>("/auth/me", "PATCH", body),
+  addMe: () =>
+    api<{ success: boolean; entity: Entity }>("/entities/me", "POST"),
 };
 
 export const isStaticEngine =

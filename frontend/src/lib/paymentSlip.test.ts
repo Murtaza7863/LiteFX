@@ -108,6 +108,37 @@ test("payment slips name the rail, alias, and claim path", () => {
   assert.match(claim.text, /claim link/i);
 });
 
+test("send slip uses the alias for the chosen rail, not the first one", () => {
+  const recipient: Entity = {
+    ...alice,
+    linkedRailAliases: [
+      { railType: "PayNow", alias: "+65alice" },
+      { railType: "FAST", alias: "001-123456" },
+    ],
+  };
+  const slip = paymentSlip(
+    obligation({
+      to: recipient.id,
+      chosenRail: "local",
+      considered: [
+        {
+          type: "local",
+          railName: "FAST",
+          feeEstimatePct: 0,
+          timeEstimateHours: 1,
+          chosen: true,
+          note: "bank",
+        },
+      ],
+    }),
+    eve,
+    recipient,
+  );
+  assert.match(slip.text, /FAST/);
+  assert.match(slip.text, /001-123456/);
+  assert.doesNotMatch(slip.text, /\+65alice/);
+});
+
 test("impossible local/linked corridors never instruct a foreign domestic rail", () => {
   for (const from of COUNTRIES) {
     for (const to of COUNTRIES) {

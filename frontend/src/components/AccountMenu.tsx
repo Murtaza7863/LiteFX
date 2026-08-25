@@ -8,12 +8,14 @@ export function AccountMenu({
   user,
   onReset,
   onLogout,
+  onPaymentMethods,
   resetBusy,
   demoMode = false,
 }: {
   user: User;
   onReset: () => void;
   onLogout: () => void;
+  onPaymentMethods: () => void;
   resetBusy?: boolean;
   demoMode?: boolean;
 }) {
@@ -52,7 +54,7 @@ export function AccountMenu({
       {open && (
         <div
           role="menu"
-          className="glass-strong animate-scale-in absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-xl py-1"
+          className="glass-strong animate-scale-in absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-xl py-1"
         >
           <div className="border-b border-[var(--border)] px-3 py-2">
             <p className="text-slate-200 truncate text-sm font-medium">
@@ -62,6 +64,24 @@ export function AccountMenu({
               {demoMode ? "Saved on this device" : user.email}
             </p>
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              onPaymentMethods();
+            }}
+            className="hover:bg-white/[0.05] text-slate-300 block w-full px-3 py-2 text-left text-sm"
+          >
+            Payment methods
+            <span className="text-slate-500 mt-0.5 block text-[11px] font-normal">
+              {user.country
+                ? user.linkedRailAliases?.length
+                  ? `${user.country} · ${user.linkedRailAliases.map((a) => a.railType).join(", ")}`
+                  : `${user.country} · no rails yet`
+                : "Add the rails you actually use"}
+            </span>
+          </button>
           <button
             type="button"
             role="menuitem"

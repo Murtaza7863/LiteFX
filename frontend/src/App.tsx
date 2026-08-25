@@ -20,6 +20,7 @@ import { client, isStaticEngine } from "./api/client";
 import { AccountMenu } from "./components/AccountMenu";
 import { AddDataForms } from "./components/AddDataForms";
 import { AuthScreen } from "./components/AuthScreen";
+import { PaymentProfileModal } from "./components/PaymentProfileModal";
 import { ClaimLinkModal } from "./components/ClaimLinkModal";
 import { Collapsible } from "./components/Collapsible";
 import { DebtGraph } from "./components/DebtGraph";
@@ -42,6 +43,7 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { TripBooks } from "./components/TripBooks";
 import { TripSnapshot } from "./components/TripSnapshot";
 import { TripSwitcher } from "./components/TripSwitcher";
+import { ME_CONTACT_ID } from "./lib/countries";
 import { RAIL_META } from "./lib/theme";
 
 export default function App() {
@@ -63,6 +65,7 @@ export default function App() {
     { id: number; msg: string; kind: "ok" | "warn" }[]
   >([]);
   const [graphMode, setGraphMode] = useState<"raw" | "netted">("raw");
+  const [paymentOpen, setPaymentOpen] = useState(false);
 
   const notify = useCallback((msg: string, kind: "ok" | "warn" = "ok") => {
     const id = Date.now() + Math.random();
@@ -108,24 +111,9 @@ export default function App() {
     void (async () => {
       try {
         let u = await client.me();
-        // GitHub Pages has no API — open a demo session. Seed only on a
-        // first visit so later trips stay on this device.
+        // GitHub Pages has no API — open a demo session on this device.
         if (!u && isStaticEngine) {
-          let hadDb = false;
-          try {
-            hadDb = localStorage.getItem("litefx-db") != null;
-          } catch {
-            /* private mode */
-          }
           u = await client.demo();
-          if (!hadDb) {
-            await client.seed();
-            try {
-              await client.runEngine();
-            } catch {
-              /* sample with no debts should not happen */
-            }
-          }
         }
         setUser(u);
       } catch {
@@ -180,18 +168,12 @@ export default function App() {
       const stillNetted = (next?.netObligations.length ?? 0) > 0;
       const debts = next?.debtEdges.length ?? 0;
       if (hadTransfers && !stillNetted && debts > 0) {
-        try {
-          await applyEngineResult({ quiet: true });
-          notify(`${msg} · transfers re-routed`);
-          return;
-        } catch {
-          notify(`${msg} · run Net & route again`, "warn");
-          return;
-        }
+        notify(`${msg} · run Net & route again`, "warn");
+        return;
       }
       notify(msg);
     },
-    [applyEngineResult, notify],
+    [notify],
   );
 
   const handleDataAdded = useCallback(
@@ -235,13 +217,14 @@ export default function App() {
       setEditExpenseId(null);
       setClaimModalToken(null);
       setDetailId(null);
-      await applyEngineResult({
-        toast: "Sample trip opened with routed transfers",
-      });
+      setNettingResult(null);
+      setRailTypes([]);
+      await fetchScenario();
+      notify("Sample trip loaded. Hit Net & route when you are ready");
     } catch (e) {
       notify((e as Error).message, "warn");
     }
-  }, [applyEngineResult, notify]);
+  }, [fetchScenario, notify]);
 
   const handleDeleteExpense = useCallback(
     async (id: string) => {
@@ -432,15 +415,42 @@ export default function App() {
       setEditExpenseId(null);
       setClaimModalToken(null);
       setDetailId(null);
-      await applyEngineResult({
-        toast: "Sample trip loaded with routed transfers",
-      });
+      setNettingResult(null);
+      setRailTypes([]);
+      await fetchScenario();
+      notify("Sample trip loaded. Hit Net & route when you are ready");
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(null);
     }
   };
+
+  const handleProfileSaved = useCallback(
+    (next: User, msg: string) => {
+      setUser(next);
+      void fetchScenario();
+      notify(msg);
+    },
+    [fetchScenario, notify],
+  );
+
+  const handleAddMe = useCallback(async () => {
+    try {
+      const r = await client.addMe();
+      const next = await fetchScenario();
+      const rails = r.entity.linkedRailAliases;
+      const msg = rails.length
+        ? `Added you with ${rails.map((a) => a.railType).join(", ")}`
+        : "Added you. No rails linked, so payouts to you use a claim link.";
+      const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
+      await rerouteIfNetsDropped(hadTransfers, next, msg);
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (/country|payment methods/i.test(msg)) setPaymentOpen(true);
+      notify(msg, "warn");
+    }
+  }, [fetchScenario, notify, rerouteIfNetsDropped, scenario?.netObligations.length]);
 
   const switchTripView = useCallback(async () => {
     setEditEntityId(null);
@@ -770,6 +780,8 @@ export default function App() {
       onAddContact={(id) => void handleAddContact(id)}
       onRemoveContact={(id) => void handleRemoveContact(id)}
       onSaveCrew={() => void handleSaveCrew()}
+      onAddMe={() => void handleAddMe()}
+      meOnTrip={scenario.entities.some((e) => e.contactId === ME_CONTACT_ID)}
       fxRates={scenario.fx?.rates}
       travelerSignal={travelerSignal}
       quiet={tripEmpty}
@@ -855,6 +867,7 @@ export default function App() {
               user={user}
               onReset={handleReset}
               onLogout={() => void handleLogout()}
+              onPaymentMethods={() => setPaymentOpen(true)}
               resetBusy={loading === "reset"}
               demoMode={isStaticEngine}
             />
@@ -900,11 +913,19 @@ export default function App() {
               setTravelerSignal((s) => s + 1);
             }}
             onSample={handleLoadSample}
-            contacts={scenario.contacts ?? []}
+            contacts={(scenario.contacts ?? []).filter(
+              (c) => c.id !== ME_CONTACT_ID,
+            )}
             entities={scenario.entities}
             locked={loading !== null}
             onAddContact={(id) => void handleAddContact(id)}
             onRemoveContact={(id) => void handleRemoveContact(id)}
+            onAddMe={() => void handleAddMe()}
+            onPaymentMethods={() => setPaymentOpen(true)}
+            meOnTrip={scenario.entities.some(
+              (e) => e.contactId === ME_CONTACT_ID,
+            )}
+            hasPaymentProfile={!!user.country}
             adding={addingTraveler}
             form={dataForms}
           />
@@ -1121,6 +1142,16 @@ export default function App() {
           }}
         />
       )}
+
+      {paymentOpen && (
+        <PaymentProfileModal
+          user={user}
+          onClose={() => setPaymentOpen(false)}
+          onSaved={handleProfileSaved}
+          onAddMe={() => void handleAddMe()}
+          onTrip={scenario.entities.some((e) => e.contactId === ME_CONTACT_ID)}
+        />
+      )}
     </div>
   );
 }
@@ -1137,6 +1168,10 @@ function HeroIntro({
   locked,
   onAddContact,
   onRemoveContact,
+  onAddMe,
+  onPaymentMethods,
+  meOnTrip = false,
+  hasPaymentProfile = false,
   adding = false,
   form,
 }: {
@@ -1149,6 +1184,10 @@ function HeroIntro({
   locked: boolean;
   onAddContact: (id: string) => void;
   onRemoveContact: (id: string) => void;
+  onAddMe: () => void;
+  onPaymentMethods: () => void;
+  meOnTrip?: boolean;
+  hasPaymentProfile?: boolean;
   adding?: boolean;
   form?: ReactNode;
 }) {
@@ -1162,7 +1201,7 @@ function HeroIntro({
       <p className="text-slate-400 mt-2.5 max-w-lg text-[15px] leading-7">
         {contacts.length > 0
           ? "Name it, then tap saved people or add someone new. LiteFX nets debts into the fewest transfers and picks a rail for each one."
-          : "Name it, then add someone. LiteFX nets debts into the fewest transfers and picks a rail for each one."}
+          : "Name it, add your country rails, then add people. LiteFX nets debts into the fewest transfers and picks a rail for each one."}
       </p>
       <label className="mt-4 block">
         <span className="text-slate-500 text-[11px] font-medium tracking-wide uppercase">
@@ -1199,6 +1238,18 @@ function HeroIntro({
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={onStart} className="btn-primary">
             Add a traveler
+          </button>
+          <button
+            type="button"
+            disabled={locked || meOnTrip}
+            onClick={hasPaymentProfile ? onAddMe : onPaymentMethods}
+            className="btn-ghost"
+          >
+            {meOnTrip
+              ? "You are on this trip"
+              : hasPaymentProfile
+                ? "Add me to this trip"
+                : "Set my payment methods"}
           </button>
           <button type="button" onClick={onSample} className="btn-ghost">
             Load sample

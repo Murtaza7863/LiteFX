@@ -16,6 +16,8 @@ import {
   alignRailsToCountry,
   hasUsableAccount,
   linkedAliasesFromUpdate,
+  normalizeLinkedRails,
+  aliasHint,
 } from "./countries.js";
 import { CORRIDOR_LIMITS, FX_TABLE } from "../types.js";
 
@@ -213,4 +215,50 @@ test("moving a traveler to Bahrain remaps a posted PayNow rail", () => {
   );
   assert.ok(!("error" in result));
   assert.equal(result.linkedRailAliases?.[0]?.railType, "Fawri+");
+});
+
+test("normalizeLinkedRails accepts every domestic rail and rejects a foreign one", () => {
+  for (const c of COUNTRIES) {
+    const ok = normalizeLinkedRails(
+      c.code,
+      c.rails.map((rail, i) => ({ railType: rail, alias: `id-${i}` })),
+    );
+    assert.ok(!("error" in ok), c.code);
+    assert.equal(ok.linkedRailAliases.length, c.rails.length);
+    assert.equal(ok.linkedRailAliases[0]?.alias, "id-0");
+  }
+  const bad = normalizeLinkedRails("SG", [
+    { railType: "PromptPay", alias: "+66" },
+  ]);
+  assert.ok("error" in bad);
+  assert.match(bad.error, /PromptPay/);
+});
+
+test("linkedAliasesFromUpdate can post several country rails with aliases", () => {
+  const result = linkedAliasesFromUpdate(
+    { country: "SG", linkedRailAliases: [] },
+    {
+      linkedRailAliases: [
+        { railType: "FAST", alias: "001-123" },
+        { railType: "PayNow", alias: "+6590001111" },
+        { railType: "PayNow", alias: "dup" },
+      ],
+    },
+  );
+  assert.ok(!("error" in result));
+  assert.deepEqual(result.linkedRailAliases, [
+    { railType: "FAST", alias: "001-123" },
+    { railType: "PayNow", alias: "+6590001111" },
+  ]);
+});
+
+test("aliasHint is specific enough to fill a send slip", () => {
+  assert.match(aliasHint("PayNow"), /65|mobile|number/i);
+  assert.match(aliasHint("SEPA Instant"), /IBAN/i);
+  assert.match(aliasHint("UPI"), /UPI/i);
+  for (const c of COUNTRIES) {
+    for (const rail of c.rails) {
+      assert.ok(aliasHint(rail).length > 3, `${c.code} ${rail}`);
+    }
+  }
 });

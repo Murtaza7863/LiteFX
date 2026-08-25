@@ -561,10 +561,55 @@ export function canonicalizeRail(
 
 export type LinkedRailAlias = { railType: string; alias: string };
 
+/** Saved-people id for the signed-in user's own payment methods. */
+export const ME_CONTACT_ID = "ppl-me";
+
+const ALIAS_HINTS: Record<string, string> = {
+  PayNow: "Mobile number (+65…)",
+  FAST: "Bank account number",
+  PromptPay: "Mobile number or national ID",
+  Zelle: "Email or US mobile number",
+  FedNow: "Bank account number",
+  ACH: "Routing and account number",
+  "SEPA Instant": "IBAN",
+  "SEPA Credit Transfer": "IBAN",
+  UPI: "UPI ID (name@bank)",
+  IMPS: "Account number and IFSC",
+  Pix: "CPF, email, phone, or Pix key",
+  DuitNow: "Mobile number or DuitNow ID",
+  QRIS: "Merchant or account ID",
+  "BI-FAST": "Bank account number",
+  InstaPay: "Mobile number or account",
+  PESONet: "Bank account number",
+  FPS: "Mobile number, email, or FPS ID",
+  PayID: "PayID email or phone",
+  NPP: "PayID or account number",
+  PayTo: "Account number",
+  Fawri: "IBAN or mobile",
+  "Fawri+": "IBAN or mobile",
+};
+
+/** Placeholder for the ID a sender needs on this rail. */
+export function aliasHint(rail: string): string {
+  if (ALIAS_HINTS[rail]) return ALIAS_HINTS[rail];
+  const r = rail.toLowerCase();
+  if (r.includes("sepa") || r.includes("iban") || r.includes("fawri"))
+    return "IBAN";
+  if (r.includes("upi")) return "UPI ID (name@bank)";
+  if (
+    /zelle|venmo|paypal|paynow|promptpay|duitnow|fps|payid|pix|instapay|raast|gcash/.test(
+      r,
+    )
+  ) {
+    return "Mobile number, email, or handle";
+  }
+  return `${rail} account or ID`;
+}
+
 /**
  * Keep only rails that exist in `country`. If `remap` and none survive
  * (e.g. PayNow after a move to Bahrain), attach the new country's primary rail
- * so "has an account" still means has an account — not a leftover foreign rail.
+ * so "has an account" still means has an account, not a leftover foreign rail.
  */
 export function alignRailsToCountry(
   country: string,
@@ -592,14 +637,69 @@ export function hasUsableAccount(
   return !!aliases?.some((a) => canonicalizeRail(country, a.railType));
 }
 
+/** Canonicalize a posted list of rails; reject anything that does not exist in `country`. */
+export function normalizeLinkedRails(
+  country: string,
+  aliases: LinkedRailAlias[] | undefined,
+): { error: string } | { linkedRailAliases: LinkedRailAlias[] } {
+  const list = Array.isArray(aliases) ? aliases : [];
+  const out: LinkedRailAlias[] = [];
+  const seen = new Set<string>();
+  for (const a of list) {
+    if (!a || typeof a.railType !== "string") continue;
+    const rail = canonicalizeRail(country, a.railType);
+    if (!rail) {
+      return {
+        error: `${String(a.railType).trim() || "That rail"} is not a settlement rail in ${country}.`,
+      };
+    }
+    if (seen.has(rail)) continue;
+    seen.add(rail);
+    out.push({
+      railType: rail,
+      alias: String(a.alias ?? "")
+        .trim()
+        .slice(0, 80),
+    });
+  }
+  return { linkedRailAliases: out };
+}
+
 /** Resolve linked rails for a traveler PATCH (country and/or railType). */
 export function linkedAliasesFromUpdate(
   existing: { country: string; linkedRailAliases: LinkedRailAlias[] },
-  body: { country?: string; railType?: string | null; alias?: string },
+  body: {
+    country?: string;
+    railType?: string | null;
+    alias?: string;
+    linkedRailAliases?: LinkedRailAlias[] | null;
+  },
 ): { error: string } | { linkedRailAliases?: LinkedRailAlias[] } {
   const nextCountry = body.country ?? existing.country;
   const countryChanged =
     body.country !== undefined && body.country !== existing.country;
+
+  if (body.linkedRailAliases !== undefined) {
+    if (body.linkedRailAliases == null) {
+      return { linkedRailAliases: [] };
+    }
+    const normalized = normalizeLinkedRails(
+      nextCountry,
+      body.linkedRailAliases,
+    );
+    if ("error" in normalized) {
+      if (!countryChanged) return normalized;
+      return {
+        linkedRailAliases: alignRailsToCountry(
+          nextCountry,
+          body.linkedRailAliases,
+          true,
+        ),
+      };
+    }
+    return normalized;
+  }
+
   if (body.railType !== undefined) {
     if (body.railType == null || !String(body.railType).trim()) {
       return { linkedRailAliases: [] };

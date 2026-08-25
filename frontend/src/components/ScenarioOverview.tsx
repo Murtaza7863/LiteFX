@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import type { Entity, Expense, FxSnapshot } from "../api/client";
 
-import { categoryLabel, EXPENSE_CATEGORIES } from "../lib/countries";
+import { categoryLabel, EXPENSE_CATEGORIES, ME_CONTACT_ID } from "../lib/countries";
 import { countryFlag, COUNTRY_NAMES } from "../lib/theme";
 import { toUsd } from "../lib/tripMath";
 import { splitSummary } from "../lib/settlementRecap";
@@ -66,7 +66,15 @@ export function ScenarioOverview({
                         no account
                       </span>
                     )}
-                    {e.contactId && (
+                    {e.contactId === ME_CONTACT_ID && (
+                      <span
+                        className="chip bg-white/[0.06] text-slate-400 shrink-0 border-[var(--border)] !px-1.5 !py-0 !text-[9px]"
+                        title="This is you"
+                      >
+                        you
+                      </span>
+                    )}
+                    {e.contactId && e.contactId !== ME_CONTACT_ID && (
                       <span
                         className="chip bg-white/[0.06] text-slate-400 shrink-0 border-[var(--border)] !px-1.5 !py-0 !text-[9px]"
                         title="Saved to your people"
@@ -82,9 +90,12 @@ export function ScenarioOverview({
                       <span className="text-slate-600">
                         {" · "}
                         {e.linkedRailAliases
-                          .map((a) => a.railType)
-                          .join(", ")}{" "}
-                        ({e.country})
+                          .map((a) =>
+                            a.alias.trim()
+                              ? `${a.railType} ${a.alias.trim()}`
+                              : a.railType,
+                          )
+                          .join(" · ")}
                       </span>
                     )}
                   </p>

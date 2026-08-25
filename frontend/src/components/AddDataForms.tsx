@@ -6,14 +6,20 @@ import { client } from "../api/client";
 import {
   CURRENCY_OPTIONS,
   EXPENSE_CATEGORIES,
-  railsFor,
   currencyFor,
   classifyExpense,
+  alignRailsToCountry,
+  primaryRail,
+  ME_CONTACT_ID,
 } from "../lib/countries";
-import { railForCountry } from "../lib/railPick";
 import { formatUsd, previewShares, toUsd } from "../lib/tripMath";
 import { CountrySelect, type CountrySelectHandle } from "./CountrySelect";
 import { IconPlus, IconDownload, IconMore } from "./icons";
+import {
+  methodsMissingAlias,
+  PaymentMethodsEditor,
+  type PaymentMethod,
+} from "./PaymentMethodsEditor";
 import { SavedPeople } from "./SavedPeople";
 
 const inputCls = "input-field";
@@ -31,6 +37,8 @@ interface Props {
   onAddContact?: (id: string) => void;
   onRemoveContact?: (id: string) => void;
   onSaveCrew?: () => void;
+  onAddMe?: () => void;
+  meOnTrip?: boolean;
   fxRates?: Record<string, number>;
   travelerSignal?: number;
   quiet?: boolean;
@@ -100,6 +108,8 @@ export function AddDataForms({
   onAddContact,
   onRemoveContact,
   onSaveCrew,
+  onAddMe,
+  meOnTrip = false,
   fxRates,
   travelerSignal = 0,
   quiet = false,
@@ -127,8 +137,9 @@ export function AddDataForms({
   const tCountryRef = useRef("SG");
   const countrySelectRef = useRef<CountrySelectHandle>(null);
   const [tContact, setTContact] = useState("");
-  const [tHasAccount, setTHasAccount] = useState(true);
-  const [tRail, setTRail] = useState(railForCountry("SG"));
+  const [tMethods, setTMethods] = useState<PaymentMethod[]>([
+    { railType: primaryRail("SG"), alias: "" },
+  ]);
 
   const [eDesc, setEDesc] = useState("");
   const [eAmount, setEAmount] = useState("");
@@ -152,12 +163,13 @@ export function AddDataForms({
     setTCountry(editEntity.country);
     tCountryRef.current = editEntity.country;
     setTContact(editEntity.contact.value ?? "");
-    setTHasAccount(editEntity.linkedRailAliases.length > 0);
-    setTRail(
-      railForCountry(
-        editEntity.country,
-        editEntity.linkedRailAliases[0]?.railType,
-      ),
+    setTMethods(
+      editEntity.linkedRailAliases.length
+        ? editEntity.linkedRailAliases.map((a) => ({
+            railType: a.railType,
+            alias: a.alias,
+          }))
+        : [],
     );
     setFormError(null);
     rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -211,7 +223,7 @@ export function AddDataForms({
   const resetTravelerForm = () => {
     setTName("");
     setTContact("");
-    setTHasAccount(true);
+    setTMethods([{ railType: primaryRail(tCountryRef.current), alias: "" }]);
     setFormError(null);
   };
 
@@ -244,11 +256,18 @@ export function AddDataForms({
   const submitTraveler = async () => {
     if (!tName.trim()) return;
     countrySelectRef.current?.commit();
+    const country = tCountryRef.current;
+    const methods = alignRailsToCountry(country, tMethods, true);
+    const toSave = methods.length ? methods : tMethods;
+    const missing = methodsMissingAlias(toSave);
+    if (missing) {
+      setFormError(missing);
+      return;
+    }
     setBusy(true);
     setFormError(null);
     try {
       const name = tName.trim();
-      const country = tCountryRef.current;
       const contact = tContact.trim()
         ? tContact.includes("@")
           ? { type: "email" as const, value: tContact.trim() }
@@ -258,7 +277,7 @@ export function AddDataForms({
         await client.updateEntity(editEntity.id, {
           name,
           country,
-          railType: tHasAccount ? railForCountry(country, tRail) : null,
+          linkedRailAliases: toSave,
           contact,
         });
         resetTravelerForm();
@@ -268,7 +287,7 @@ export function AddDataForms({
         await client.addEntity({
           name,
           country,
-          railType: tHasAccount ? railForCountry(country, tRail) : undefined,
+          linkedRailAliases: toSave,
           contact: contact.value ? contact : undefined,
         });
         resetTravelerForm();
@@ -518,12 +537,27 @@ export function AddDataForms({
 
       {onAddContact && onRemoveContact && contacts.length > 0 && !quiet && (
         <SavedPeople
-          contacts={contacts}
+          contacts={contacts.filter((c) => c.id !== ME_CONTACT_ID)}
           entities={entities}
           locked={locked || busy}
           onAdd={onAddContact}
           onRemove={onRemoveContact}
         />
+      )}
+      {onAddMe && !quiet && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={locked || busy || meOnTrip}
+            onClick={onAddMe}
+            className="btn-ghost !px-3 !py-1.5 text-xs"
+          >
+            {meOnTrip ? "You are on this trip" : "Add me to this trip"}
+          </button>
+          <p className="text-slate-500 text-[11px]">
+            Uses the rails saved in Payment methods.
+          </p>
+        </div>
       )}
       {onSaveCrew && unsavedCrew && (
         <div className="flex flex-wrap items-center gap-2">
@@ -575,9 +609,16 @@ export function AddDataForms({
             value={tCountry}
             onChange={(code) => {
               if (code === tCountryRef.current) return;
+              const next = alignRailsToCountry(code, tMethods, true);
               tCountryRef.current = code;
               setTCountry(code);
-              setTRail(railForCountry(code));
+              setTMethods(
+                next.length
+                  ? next
+                  : tMethods.length
+                    ? [{ railType: primaryRail(code), alias: tMethods[0]?.alias ?? "" }]
+                    : [],
+              );
             }}
           />
           <input
@@ -586,29 +627,12 @@ export function AddDataForms({
             value={tContact}
             onChange={(e) => setTContact(e.target.value)}
           />
-          <label className="text-slate-300 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={tHasAccount}
-              onChange={(e) => setTHasAccount(e.target.checked)}
-            />
-            Has a linked account
-          </label>
-          {tHasAccount ? (
-            <select
-              className={inputCls}
-              value={railForCountry(tCountry, tRail)}
-              onChange={(e) => setTRail(e.target.value)}
-            >
-              {railsFor(tCountry).map((r) => (
-                <option key={r} value={r} className="bg-slate-900">
-                  {r} ({tCountry})
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="hidden sm:block" />
-          )}
+          <PaymentMethodsEditor
+            country={tCountry}
+            value={tMethods}
+            onChange={setTMethods}
+            disabled={busy}
+          />
           <div className="flex gap-2 sm:col-span-2">
             <button
               type="button"
@@ -629,7 +653,7 @@ export function AddDataForms({
           <p className="text-slate-500 text-[11px] sm:col-span-2">
             {editEntity
               ? "Edits update this person in saved people for later trips."
-              : "New travelers are saved for later trips."}
+              : "Pick rails that exist in their country and an ID send slips can use. Remove every rail for a claim link instead."}
           </p>
         </form>
       )}

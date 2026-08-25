@@ -20,9 +20,13 @@ import {
   refreshDerivedForFx,
   renameTrip,
   resetApp,
+  runAsUser,
   saveTripCrew,
   seedStore,
   selectTrip,
+  addUser,
+  addMeToTrip,
+  updateUserProfile,
   updateEntity,
   updateExpense,
   withClaimTrip,
@@ -674,4 +678,49 @@ test("normalizeApp restores Eve's PayNow on an old sample trip once", () => {
     )?.linkedRailAliases.length,
     0,
   );
+});
+
+test("account payment methods stay in-country and add me copies them onto the trip", () => {
+  addUser({
+    id: "usr-ada",
+    email: "ada@x.test",
+    name: "Ada Lovelace",
+    passwordHash: "x",
+    createdAt: new Date().toISOString(),
+  });
+  runAsUser("usr-ada", () => {
+    const blocked = addMeToTrip();
+    assert.ok("error" in blocked);
+    const foreign = updateUserProfile("usr-ada", {
+      country: "SG",
+      linkedRailAliases: [{ railType: "PromptPay", alias: "+66" }],
+    });
+    assert.ok("error" in foreign);
+    const saved = updateUserProfile("usr-ada", {
+      country: "SG",
+      linkedRailAliases: [
+        { railType: "PayNow", alias: "+6591112222" },
+        { railType: "FAST", alias: "001-999" },
+      ],
+    });
+    assert.ok(!("error" in saved));
+    assert.equal(saved.country, "SG");
+    assert.equal(saved.linkedRailAliases?.length, 2);
+    const me = addMeToTrip();
+    assert.equal("id" in me, true, "error" in me ? me.error : "");
+    if ("error" in me) throw new Error(me.error);
+    assert.equal(me.contactId, "ppl-me");
+    assert.equal(me.linkedRailAliases[1]?.alias, "001-999");
+    const dup = addMeToTrip();
+    assert.ok("error" in dup);
+    const moved = updateUserProfile("usr-ada", { country: "IN" });
+    assert.ok(!("error" in moved));
+    const onTrip = getStore().entities.find((e) => e.contactId === "ppl-me");
+    assert.equal(onTrip?.country, "IN");
+    assert.ok(
+      onTrip?.linkedRailAliases.every((a) =>
+        ["UPI", "IMPS"].includes(a.railType),
+      ),
+    );
+  });
 });
