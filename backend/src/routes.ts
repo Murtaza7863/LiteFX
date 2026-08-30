@@ -32,6 +32,7 @@ import {
   deleteTrip,
   updateUserProfile,
   addMeToTrip,
+  expenseChangesMoney,
 } from "./store";
 import { FX_TABLE } from "./types";
 import type { Expense } from "./types";
@@ -49,6 +50,7 @@ import {
   linkRecipientAccount,
   overrideRail,
   rebuildSettlement,
+  ensureLiveSettlement,
   rerouteUnsettled,
   runRouting,
   getRailTypesExercised,
@@ -352,6 +354,7 @@ apiRouter.get("/scenario", (_req, res) => {
 
 // ── POST /api/entities/me — add the signed-in user's profile to this trip ──
 apiRouter.post("/entities/me", (_req, res) => {
+  const hadNets = getStore().netObligations.length > 0;
   const result = addMeToTrip();
   if ("error" in result) {
     const status = /already/i.test(result.error)
@@ -362,6 +365,7 @@ apiRouter.post("/entities/me", (_req, res) => {
     res.status(status).json({ success: false, message: result.error });
     return;
   }
+  if (hadNets) ensureLiveSettlement();
   res.json({ success: true, entity: result });
 });
 
@@ -384,6 +388,7 @@ apiRouter.post("/entities", (req, res) => {
     contactId?: string;
     linkedRailAliases?: { railType: string; alias: string }[];
   };
+  const hadNets = getStore().netObligations.length > 0;
   if (contactId) {
     const result = addEntityFromContact(contactId);
     if ("error" in result) {
@@ -395,6 +400,7 @@ apiRouter.post("/entities", (req, res) => {
       res.status(status).json({ success: false, message: result.error });
       return;
     }
+    if (hadNets) ensureLiveSettlement();
     res.json({ success: true, entity: result });
     return;
   }
@@ -449,6 +455,7 @@ apiRouter.post("/entities", (req, res) => {
     res.status(status).json({ success: false, message: result.error });
     return;
   }
+  if (hadNets) ensureLiveSettlement();
   res.json({ success: true, entity: result });
 });
 
@@ -546,6 +553,7 @@ apiRouter.post("/expenses", (req, res) => {
     ...parsed,
   };
   addExpense(expense);
+  ensureLiveSettlement();
   res.json({ success: true, expense });
 });
 
@@ -561,30 +569,35 @@ apiRouter.patch("/expenses/:id", (req, res) => {
     res.status(400).json({ success: false, message: parsed.error });
     return;
   }
-  const expense = updateExpense(req.params.id, {
-    ...existing,
-    ...parsed,
-  });
+  const next = { ...existing, ...parsed };
+  const hadNets = getStore().netObligations.length > 0;
+  const money = expenseChangesMoney(existing, next);
+  const expense = updateExpense(req.params.id, next);
+  if (money || hadNets) ensureLiveSettlement();
   res.json({ success: true, expense });
 });
 
 // ── DELETE /api/expenses/:id — remove an expense ──
 apiRouter.delete("/expenses/:id", (req, res) => {
+  const hadNets = getStore().netObligations.length > 0;
   const ok = deleteExpense(req.params.id);
   if (!ok) {
     res.status(404).json({ success: false, message: "Expense not found." });
     return;
   }
+  if (hadNets) ensureLiveSettlement();
   res.json({ success: true });
 });
 
 // ── DELETE /api/entities/:id — remove a traveler (bills they paid, their share of others) ──
 apiRouter.delete("/entities/:id", (req, res) => {
+  const hadNets = getStore().netObligations.length > 0;
   const ok = deleteEntity(req.params.id);
   if (!ok) {
     res.status(404).json({ success: false, message: "Traveler not found." });
     return;
   }
+  if (hadNets) ensureLiveSettlement();
   res.json({ success: true });
 });
 

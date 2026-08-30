@@ -61,7 +61,8 @@ export function AuthScreen({ onAuthed }: { onAuthed: (user: User) => void }) {
           <p className="mt-2.5 text-[15px] leading-7 text-[var(--muted)]">
             Nets messy IOUs into the fewest transfers, then picks a rail for
             each corridor. The sample Bangkok trip is loaded with people and
-            expenses; you add your rails and hit Net & route.{" "}
+            expenses. Add a bill and the agent nets everyone's share onto the
+            cheapest rails. Confirm sends when you are ready.{" "}
             {isStaticEngine
               ? "This browser demo stays on this device."
               : "Your trips are saved to your account."}{" "}

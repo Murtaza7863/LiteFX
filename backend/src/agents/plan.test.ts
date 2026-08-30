@@ -10,7 +10,7 @@ afterEach(() => {
   clearStore();
 });
 
-test("plan is empty until netting has run", () => {
+test("plan is empty until the trip is routed", () => {
   seedStore();
   const plan = buildSettlementPlan();
   assert.match(plan.text, /no netted transfers/i);

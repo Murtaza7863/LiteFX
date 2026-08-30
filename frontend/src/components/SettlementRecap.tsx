@@ -91,7 +91,7 @@ export function SettlementRecap({
               </span>
             </p>
             <p className="text-slate-500 mt-0.5 truncate text-xs">
-              {result.reductionRatio}× fewer payments · $
+              Agent picked cheapest corridors · $
               {result.feeSavingsUsd.toFixed(2)} fees saved
               {(result.corridorSavingsUsd ?? 0) > 0
                 ? ` · $${result.corridorSavingsUsd!.toFixed(2)} vs largest-first`

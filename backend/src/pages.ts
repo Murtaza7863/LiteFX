@@ -42,7 +42,7 @@ function shell(title: string, body: string): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>LiteFX — ${esc(title)}</title>
+<title>LiteFX · ${esc(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,500&family=Outfit:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -86,7 +86,7 @@ function claimPage(token: string): string {
   const body = `
     <div class="brand"><span class="logo"></span> Lite<span class="fx">FX</span></div>
     <h1>You've been paid</h1>
-    <p class="muted">Someone settled a travel debt to you via LiteFX. Choose a local payout in your country — the sender is not paying on that rail.</p>
+    <p class="muted">Someone settled a travel debt to you via LiteFX. Choose a local payout in your country. The sender is not paying on that rail.</p>
     <div id="root"><p class="muted">Loading…</p></div>
     <script>
       const TOKEN = ${JSON.stringify(token)};

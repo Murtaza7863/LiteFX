@@ -182,7 +182,7 @@ export function ObligationCard({
         )}
         {obligation.status === "pending" && (
           <p className="text-slate-600 py-2.5 text-center text-sm">
-            Net & route first
+            Waiting for the agent to pick a rail
           </p>
         )}
       </div>

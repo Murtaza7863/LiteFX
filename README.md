@@ -6,12 +6,12 @@ A group trip splitter for people who paid in different countries. LiteFX nets th
 
 ## 3-minute demo
 
-Record against the live demo. The Bangkok crew and expenses are already there so you are not typing receipts. Transfers are not routed until you hit **Net & route**.
+Record against the live demo. The Bangkok crew and expenses are already there so you are not typing receipts. Transfers are not routed until you add a bill (or hit **Route now**).
 
 1. **0:00 Problem.** Friends in SG, TH, US, and DE split a Bangkok trip in THB, SGD, and USD. Splitwise would leave a web of IOUs, then everyone pays the expensive way.
 2. **0:20 Your rails.** Avatar menu → **Payment methods**. Pick your country, add the rails that exist there, and the IDs a sender needs. Save, then **Add me to this trip**.
-3. **0:50 Route.** Hit **Net & route**. Show the scoreboard: pairwise IOUs collapsed into a few transfers. Open a transfer: the chip is a real rail (PromptPay, PayNow, USDC), not "local". Toggle **Try another rail** and watch the fee in dollars change.
-4. **1:20 Remap.** Edit Bob, move him from Thailand to Japan, Save. PromptPay cannot follow him. Run Net & route again if the graph dropped.
+3. **0:50 Agent.** Add a small expense (airport coffee), or tap **Add a bill**. The agent nets the whole trip onto the cheapest rails and FX. Show the scoreboard: pairwise IOUs collapsed into a few transfers. Open a transfer: the chip is a real rail (PromptPay, PayNow, USDC), not "local". Toggle **Try another rail** and watch the fee in dollars change.
+4. **1:20 Remap.** Edit Bob, move him from Thailand to Japan, Save. PromptPay cannot follow him. If the trip was already routed, the agent rebuilds on the new corridors.
 5. **1:50 Claim link.** Edit a traveler, remove every rail, Save. Their payout becomes a claim link. Open it and pick a local payout. The sender never uses their domestic rail.
 6. **2:20 Settle.** Copy slips, settle a local transfer, flip **Who owes whom** from IOUs to transfers. Trip books should still net to $0.00.
 7. **2:45 Close.** Every rail is simulated. No bank, card, or chain calls.
@@ -20,7 +20,7 @@ Record against the live demo. The Bangkok crew and expenses are already there so
 
 - Track a trip: travelers, countries, linked rails (with the IDs send slips need), and shared expenses in mixed currencies.
 - Save your own country and payment types on the account, then add yourself to a trip.
-- Net pairwise debts into the fewest transfers, matching cheap corridors first (same-country / SEPA, then linked rails, then USDC).
+- Net pairwise debts into the fewest transfers when you add a bill, matching cheap corridors first (same-country / SEPA, then linked rails, then USDC).
 - Show a send slip for each transfer: who pays whom, which rail, fee, FX.
 - Let you try another rail on a transfer (PromptPay at 0% vs USDC at 1.5%) and watch the fee change.
 - Remap rails when someone changes country. A Thai PromptPay payout will not survive a move to Japan.

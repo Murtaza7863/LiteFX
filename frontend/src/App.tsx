@@ -48,6 +48,12 @@ import { ME_CONTACT_ID } from "./lib/countries";
 import { RAIL_META } from "./lib/theme";
 import { LITEFX_DB_KEY } from "./engine/shims/fs";
 
+function agentRebalanceMessage(s: ScenarioResponse | undefined): string | null {
+  const n = s?.nettingSummary;
+  if (!n || (s?.netObligations.length ?? 0) === 0) return null;
+  return `Agent routed · ${n.rawEdgeCount} IOUs → ${n.netEdgeCount} cheapest-corridor sends · $${n.feeSavingsUsd.toFixed(2)} fees saved`;
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [scenario, setScenario] = useState<ScenarioResponse | null>(null);
@@ -58,6 +64,7 @@ export default function App() {
   const [claimModalToken, setClaimModalToken] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [travelerSignal, setTravelerSignal] = useState(0);
+  const [expenseSignal, setExpenseSignal] = useState(0);
   const [addingTraveler, setAddingTraveler] = useState(false);
   const [editEntityId, setEditEntityId] = useState<string | null>(null);
   const [editExpenseId, setEditExpenseId] = useState<string | null>(null);
@@ -73,11 +80,12 @@ export default function App() {
   const notify = useCallback((msg: string, kind: "ok" | "warn" = "ok") => {
     const id = Date.now() + Math.random();
     setToasts([{ id, msg, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2800);
+    const ms = msg.length > 72 ? 4200 : 2800;
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), ms);
   }, []);
 
-  const fetchScenario = useCallback(async () => {
-    setLoading("scenario");
+  const fetchScenario = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading("scenario");
     try {
       // The backend boots with an async FX fetch, so retry briefly on startup.
       let s: ScenarioResponse | undefined;
@@ -104,7 +112,9 @@ export default function App() {
       setError((e as Error).message);
       return undefined;
     } finally {
-      setLoading(null);
+      if (!opts?.silent) {
+        setLoading((cur) => (cur === "scenario" ? null : cur));
+      }
     }
   }, []);
 
@@ -153,43 +163,47 @@ export default function App() {
   const applyEngineResult = useCallback(
     async (opts?: { quiet?: boolean; toast?: string }) => {
       const r = await client.runEngine();
-      setNettingResult(r);
-      setRailTypes(r.railTypesExercised);
       setClaimModalToken(null);
       setDetailId(null);
-      const s = await client.getScenario();
-      setScenario(s);
+      const s = await fetchScenario({ silent: true });
       if (!opts?.quiet) {
         notify(
           opts?.toast ??
-            `Netted ${r.rawEdgeCount} debts into ${r.netEdgeCount} transfers and routed them`,
+            agentRebalanceMessage(s) ??
+            `Agent routed · ${r.rawEdgeCount} IOUs → ${r.netEdgeCount} cheapest-corridor sends · $${r.feeSavingsUsd.toFixed(2)} fees saved`,
         );
       }
-      setError(null);
       return s;
     },
-    [notify],
+    [fetchScenario, notify],
   );
 
-  const rerouteIfNetsDropped = useCallback(
-    async (
-      hadTransfers: boolean,
-      next: ScenarioResponse | undefined,
-      msg: string,
-    ) => {
-      const stillNetted = (next?.netObligations.length ?? 0) > 0;
+  const syncTrip = useCallback(
+    async (opts: {
+      msg: string;
+      hadTransfers?: boolean;
+      agent?: boolean;
+    }) => {
+      const next = await fetchScenario({ silent: true });
       const debts = next?.debtEdges.length ?? 0;
-      if (hadTransfers && !stillNetted && debts > 0) {
-        notify(`${msg} · run Net & route again`, "warn");
+      const nets = next?.netObligations.length ?? 0;
+      if (next && debts > 0 && nets === 0 && (opts.agent || opts.hadTransfers)) {
+        try {
+          await applyEngineResult();
+        } catch (e) {
+          notify(`${opts.msg} · ${(e as Error).message}`, "warn");
+        }
         return;
       }
-      notify(msg);
+      const agent = agentRebalanceMessage(next);
+      if (agent && opts.agent) notify(agent);
+      else notify(opts.msg);
     },
-    [notify],
+    [applyEngineResult, fetchScenario, notify],
   );
 
   const handleDataAdded = useCallback(
-    async (msg: string) => {
+    async (msg: string, opts?: { agent?: boolean }) => {
       const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
       const editingMe =
         !!editEntityId &&
@@ -206,16 +220,13 @@ export default function App() {
           /* keep the signed-in user */
         }
       }
-      const next = await fetchScenario();
-      await rerouteIfNetsDropped(hadTransfers, next, msg);
+      await syncTrip({
+        msg,
+        hadTransfers,
+        agent: opts?.agent,
+      });
     },
-    [
-      editEntityId,
-      fetchScenario,
-      rerouteIfNetsDropped,
-      scenario?.entities,
-      scenario?.netObligations.length,
-    ],
+    [editEntityId, scenario?.entities, scenario?.netObligations.length, syncTrip],
   );
 
   const handleClear = useCallback(async () => {
@@ -234,6 +245,7 @@ export default function App() {
       setDetailId(null);
       setNettingResult(null);
       setRailTypes([]);
+      setExpenseSignal(0);
       await fetchScenario();
       notify("Cleared. Add your own travelers and expenses");
     } catch (e) {
@@ -250,8 +262,9 @@ export default function App() {
       setDetailId(null);
       setNettingResult(null);
       setRailTypes([]);
+      setExpenseSignal(0);
       await fetchScenario();
-      notify("Sample trip loaded. Hit Net & route when you are ready");
+      notify("Sample trip loaded. Add a bill and the agent nets onto the cheapest rails");
     } catch (e) {
       notify((e as Error).message, "warn");
     }
@@ -266,13 +279,16 @@ export default function App() {
         setEditExpenseId((cur) => (cur === id ? null : cur));
         setClaimModalToken(null);
         setDetailId(null);
-        const next = await fetchScenario();
-        await rerouteIfNetsDropped(hadTransfers, next, "Expense removed");
+        await syncTrip({
+          msg: "Expense removed",
+          hadTransfers,
+          agent: hadTransfers,
+        });
       } catch (e) {
         notify((e as Error).message, "warn");
       }
     },
-    [fetchScenario, notify, rerouteIfNetsDropped, scenario?.netObligations.length],
+    [notify, scenario?.netObligations.length, syncTrip],
   );
 
   const handleDeleteTraveler = useCallback(
@@ -291,18 +307,21 @@ export default function App() {
         setEditExpenseId(null);
         setClaimModalToken(null);
         setDetailId(null);
-        const next = await fetchScenario();
-        await rerouteIfNetsDropped(hadTransfers, next, "Traveler removed");
+        await syncTrip({
+          msg: "Traveler removed",
+          hadTransfers,
+          agent: hadTransfers,
+        });
       } catch (e) {
         notify((e as Error).message, "warn");
       }
     },
-    [fetchScenario, notify, rerouteIfNetsDropped, scenario?.netObligations.length],
+    [notify, scenario?.netObligations.length, syncTrip],
   );
 
   const handleEngine = async () => {
     if (!scenario || scenario.debtEdges.length === 0) {
-      notify("Add a shared expense before netting", "warn");
+      notify("Add a shared expense before routing", "warn");
       return;
     }
     setLoading("engine");
@@ -319,8 +338,7 @@ export default function App() {
     setLoading(`settle-${id}`);
     try {
       const res = await client.settle(id);
-      const s = await client.getScenario();
-      setScenario(s);
+      await fetchScenario({ silent: true });
       if (!res.success) {
         notify(res.message, "warn");
         setError(null);
@@ -378,8 +396,7 @@ export default function App() {
           settled += 1;
         }
       }
-      const s = await client.getScenario();
-      setScenario(s);
+      await fetchScenario({ silent: true });
       if (claimToken) setClaimModalToken(claimToken);
       const bits = [];
       if (settled) bits.push(`settled ${settled}`);
@@ -398,11 +415,7 @@ export default function App() {
     setLoading(`rail-${obligationId}`);
     try {
       await client.overrideRail(obligationId, railName);
-      const s = await client.getScenario();
-      setScenario(s);
-      setRailTypes([
-        ...new Set(s.netObligations.map((o) => o.chosenRail).filter(Boolean)),
-      ] as RailType[]);
+      await fetchScenario({ silent: true });
       notify(`Rail switched to ${railName}`);
       setError(null);
     } catch (e) {
@@ -416,11 +429,7 @@ export default function App() {
     setLoading(`link-${entityId}`);
     try {
       const r = await client.linkAccount(entityId);
-      const s = await client.getScenario();
-      setScenario(s);
-      setRailTypes([
-        ...new Set(s.netObligations.map((o) => o.chosenRail).filter(Boolean)),
-      ] as RailType[]);
+      await fetchScenario({ silent: true });
       const rail = r.entity.linkedRailAliases[0]?.railType ?? "account";
       notify(`${r.entity.name.trim()} linked ${rail}. Transfers re-routed`);
       setError(null);
@@ -448,8 +457,9 @@ export default function App() {
       setDetailId(null);
       setNettingResult(null);
       setRailTypes([]);
+      setExpenseSignal(0);
       await fetchScenario();
-      notify("Sample trip loaded. Hit Net & route when you are ready");
+      notify("Sample trip loaded. Add a bill and the agent nets onto the cheapest rails");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -458,11 +468,16 @@ export default function App() {
   };
 
   const handleProfileSaved = useCallback(
-    (next: User, msg: string) => {
+    async (next: User, msg: string) => {
       setUser(next);
-      notify(msg);
+      const before = scenario
+        ? agentRebalanceMessage(scenario)
+        : null;
+      const s = await fetchScenario({ silent: true });
+      const agent = agentRebalanceMessage(s);
+      notify(agent && agent !== before ? agent : msg);
     },
-    [notify],
+    [fetchScenario, notify, scenario],
   );
 
   const handleAddMe = useCallback(async () => {
@@ -470,13 +485,12 @@ export default function App() {
     addMeLock.current = true;
     try {
       const r = await client.addMe();
-      const next = await fetchScenario();
       const rails = r.entity.linkedRailAliases;
       const msg = rails.length
         ? `Added you with ${rails.map((a) => a.railType).join(", ")}`
         : "Added you. No rails linked, so payouts to you use a claim link.";
       const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
-      await rerouteIfNetsDropped(hadTransfers, next, msg);
+      await syncTrip({ msg, hadTransfers, agent: hadTransfers });
     } catch (e) {
       const msg = (e as Error).message;
       if (/country|payment methods/i.test(msg)) setPaymentOpen(true);
@@ -484,7 +498,7 @@ export default function App() {
     } finally {
       addMeLock.current = false;
     }
-  }, [fetchScenario, notify, rerouteIfNetsDropped, scenario?.netObligations.length]);
+  }, [notify, scenario?.netObligations.length, syncTrip]);
 
   const switchTripView = useCallback(async () => {
     setEditEntityId(null);
@@ -493,6 +507,7 @@ export default function App() {
     setDetailId(null);
     setNettingResult(null);
     setRailTypes([]);
+    setExpenseSignal(0);
     await fetchScenario();
   }, [fetchScenario]);
 
@@ -530,7 +545,7 @@ export default function App() {
     async (id: string, name: string) => {
       try {
         await client.renameTrip(id, name);
-        await fetchScenario();
+        await fetchScenario({ silent: true });
         notify("Trip renamed");
       } catch (e) {
         notify((e as Error).message, "warn");
@@ -567,7 +582,7 @@ export default function App() {
       try {
         await client.duplicateTrip(id);
         await switchTripView();
-        notify("Copied trip. Nets were not copied. Run Net & route again");
+        notify("Copied trip. Add a bill and the agent will rebalance");
       } catch (e) {
         setError((e as Error).message);
         setLoading(null);
@@ -579,14 +594,18 @@ export default function App() {
   const handleAddContact = useCallback(
     async (id: string) => {
       try {
+        const hadTransfers = (scenario?.netObligations.length ?? 0) > 0;
         await client.addEntity({ contactId: id });
-        await fetchScenario();
-        notify("Added from saved people");
+        await syncTrip({
+          msg: "Added from saved people",
+          hadTransfers,
+          agent: hadTransfers,
+        });
       } catch (e) {
         notify((e as Error).message, "warn");
       }
     },
-    [fetchScenario, notify],
+    [notify, scenario?.netObligations.length, syncTrip],
   );
 
   const handleRemoveContact = useCallback(
@@ -600,7 +619,7 @@ export default function App() {
       }
       try {
         await client.deleteContact(id);
-        await fetchScenario();
+        await fetchScenario({ silent: true });
         notify("Removed from saved people");
       } catch (e) {
         notify((e as Error).message, "warn");
@@ -612,7 +631,7 @@ export default function App() {
   const handleSaveCrew = useCallback(async () => {
     try {
       await client.saveCrew();
-      await fetchScenario();
+      await fetchScenario({ silent: true });
       notify("Crew saved for later trips");
     } catch (e) {
       notify((e as Error).message, "warn");
@@ -656,8 +675,8 @@ export default function App() {
   const stepDefs = [
     {
       id: "net",
-      label: "Net & route",
-      sub: "Collapse debts and pick rails",
+      label: hasNetted ? "Routed" : "Route",
+      sub: "Agent nets shares onto cheapest rails",
       icon: <IconMerge className="h-4 w-4" />,
       done: railTypes.length > 0,
       loadingKey: "engine",
@@ -667,7 +686,7 @@ export default function App() {
     {
       id: "settle",
       label: "Settle",
-      sub: "Issue transfers",
+      sub: "Confirm sends",
       icon: <IconSend className="h-4 w-4" />,
       done: allActed,
       loadingKey: "settle-all",
@@ -732,8 +751,8 @@ export default function App() {
   const headerAction =
     debtCount > 0 && !hasNetted
       ? {
-          label: loading === "engine" ? "Running…" : "Net & route",
-          compact: loading === "engine" ? "Run…" : "Net",
+          label: loading === "engine" ? "Routing…" : "Route now",
+          compact: loading === "engine" ? "Wait…" : "Route",
           onClick: handleEngine,
         }
       : hasNetted && !allActed
@@ -755,7 +774,7 @@ export default function App() {
           ? `${obligations.length} transfer${obligations.length === 1 ? "" : "s"}`
           : `${debtCount} IOU${debtCount === 1 ? "" : "s"}`
       }
-      defaultOpen={hasNetted || debtCount <= 8}
+      defaultOpen
       badge={
         railTypes.length > 0 ? <RailLegend types={railTypes} /> : undefined
       }
@@ -818,6 +837,8 @@ export default function App() {
       meOnTrip={scenario.entities.some((e) => e.contactId === ME_CONTACT_ID)}
       fxRates={scenario.fx?.rates}
       travelerSignal={travelerSignal}
+      expenseSignal={expenseSignal}
+      highlightExpense={debtCount > 0 && !hasNetted}
       quiet={tripEmpty}
       editEntity={scenario.entities.find((e) => e.id === editEntityId) ?? null}
       editExpense={
@@ -926,13 +947,13 @@ export default function App() {
           </div>
         )}
 
-        {loading === "scenario" && (
+        {loading === "engine" && (
           <p
             className="text-slate-500 animate-fade-in px-1 text-xs"
             role="status"
             aria-live="polite"
           >
-            Updating trip…
+            Agent matching cheapest corridors…
           </p>
         )}
 
@@ -973,15 +994,33 @@ export default function App() {
           />
         )}
 
-        {!tripEmpty &&
-          debtCount > 0 &&
-          !hasNetted &&
-          scenario.ledger.length > 0 && (
-            <p className="animate-fade-in rounded-xl border border-[#c4a574]/25 bg-[#c4a574]/10 px-3.5 py-2.5 text-[13px] text-[#c4a574]">
-              Trip changed after settlement. Previous payouts stay in the log.
-              Run Net & route again for the new balances.
+        {!tripEmpty && debtCount > 0 && !hasNetted && (
+          <div
+            className={`animate-fade-in flex flex-wrap items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-[13px] ${
+              scenario.ledger.length > 0
+                ? "border border-[#c4a574]/25 bg-[#c4a574]/10 text-[#c4a574]"
+                : "border border-white/[0.08] bg-white/[0.03] text-slate-400"
+            }`}
+          >
+            <p className="min-w-0 flex-1">
+              {scenario.ledger.length > 0
+                ? "Trip changed after settlement. Previous payouts stay in the log. Add or edit a bill and the agent will rebalance."
+                : "Add a bill. The agent nets everyone's share onto the cheapest rails and FX."}
             </p>
-          )}
+            <button
+              type="button"
+              className="btn-primary shrink-0 !px-3 !py-1 text-xs"
+              onClick={() => {
+                setEditEntityId(null);
+                setEditExpenseId(null);
+                setExpenseSignal((n) => n + 1);
+              }}
+              disabled={loading !== null}
+            >
+              Add a bill
+            </button>
+          </div>
+        )}
 
         {!tripEmpty && (debtCount > 0 || hasNetted) && (
           <section className="animate-fade-in-up">
@@ -989,8 +1028,11 @@ export default function App() {
           </section>
         )}
 
+        {!tripEmpty && !hasNetted && tripPanel}
+
         {hasNetted && nettingResult && (
           <SettlementRecap
+            key={`${scenario.trip?.id}-${nettingResult.rawEdgeCount}-${nettingResult.netEdgeCount}-${nettingResult.feeSavingsUsd}`}
             result={nettingResult}
             obligations={obligations}
             tripName={scenario.trip?.name ?? "Trip"}
@@ -1100,7 +1142,7 @@ export default function App() {
               fx={scenario.fx}
             />
             {(debtCount > 0 || hasNetted) && graphBlock}
-            {tripPanel}
+            {hasNetted && tripPanel}
           </>
         )}
 
@@ -1171,8 +1213,7 @@ export default function App() {
           token={claimModalToken}
           onClose={() => setClaimModalToken(null)}
           onClaimed={async () => {
-            const s = await client.getScenario();
-            setScenario(s);
+            await fetchScenario({ silent: true });
           }}
         />
       )}
@@ -1183,7 +1224,6 @@ export default function App() {
           onClose={() => setPaymentOpen(false)}
           onSaved={handleProfileSaved}
           onAddMe={() => void handleAddMe()}
-          onRefresh={() => void fetchScenario()}
           onTrip={scenario.entities.some((e) => e.contactId === ME_CONTACT_ID)}
         />
       )}
@@ -1235,8 +1275,8 @@ function HeroIntro({
       </h1>
       <p className="text-slate-400 mt-2.5 max-w-lg text-[15px] leading-7">
         {contacts.length > 0
-          ? "Name it, then tap saved people or add someone new. LiteFX nets debts into the fewest transfers and picks a rail for each one."
-          : "Name it, add your country rails, then add people. LiteFX nets debts into the fewest transfers and picks a rail for each one."}
+          ? "Name it, then tap saved people or add someone new. Add a bill and the agent nets shares onto the cheapest rails."
+          : "Name it, add your country rails, then add people. Add a bill and the agent nets shares onto the cheapest rails."}
       </p>
       <label className="mt-4 block">
         <span className="text-slate-500 text-[11px] font-medium tracking-wide uppercase">

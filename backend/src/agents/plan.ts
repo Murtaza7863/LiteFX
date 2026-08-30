@@ -39,7 +39,7 @@ export function buildSettlementPlan(): SettlementPlan {
   lines.push("");
 
   if (st.netObligations.length === 0) {
-    lines.push("No netted transfers yet. Run Net & route first.");
+    lines.push("No netted transfers yet. Add a bill and the agent will route the cheapest corridors.");
   } else {
     for (const ob of st.netObligations) {
       const rail = obligationRailName(ob);

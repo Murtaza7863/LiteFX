@@ -30,7 +30,7 @@ interface Props {
   entities: Entity[];
   expenses: Expense[];
   expenseCount: number;
-  onAdded: (msg: string) => void;
+  onAdded: (msg: string, opts?: { agent?: boolean }) => void;
   onClear: () => void;
   onLoadSample: () => void;
   contacts?: SavedContact[];
@@ -41,6 +41,8 @@ interface Props {
   meOnTrip?: boolean;
   fxRates?: Record<string, number>;
   travelerSignal?: number;
+  expenseSignal?: number;
+  highlightExpense?: boolean;
   quiet?: boolean;
   editEntity?: Entity | null;
   editExpense?: Expense | null;
@@ -112,6 +114,8 @@ export function AddDataForms({
   meOnTrip = false,
   fxRates,
   travelerSignal = 0,
+  expenseSignal = 0,
+  highlightExpense = false,
   quiet = false,
   editEntity = null,
   editExpense = null,
@@ -253,6 +257,21 @@ export function AddDataForms({
     }
   }, [quiet, travelerSignal, editEntity, editExpense]);
 
+  useEffect(() => {
+    if (expenseSignal === 0 || entities.length === 0) return;
+    resetExpenseForm();
+    setEPayer((cur) =>
+      cur && entities.some((en) => en.id === cur)
+        ? cur
+        : (entities[0]?.id ?? ""),
+    );
+    setOpen("expense");
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Only the signal should open the form. Including entities/edit state
+    // would reopen it after a save or trip refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenseSignal]);
+
   const submitTraveler = async () => {
     if (!tName.trim()) return;
     countrySelectRef.current?.commit();
@@ -281,7 +300,12 @@ export function AddDataForms({
           contact,
         });
         resetTravelerForm();
-        onAdded(`Updated ${name}`);
+        onAdded(`Updated ${name}`, {
+          agent:
+            editEntity.country !== country ||
+            JSON.stringify(editEntity.linkedRailAliases) !==
+              JSON.stringify(toSave),
+        });
         closeForms();
       } else {
         await client.addEntity({
@@ -356,13 +380,26 @@ export function AddDataForms({
       };
       if (editExpense) {
         await client.updateExpense(editExpense.id, payload);
+        const money =
+          editExpense.payerId !== payload.payerId ||
+          editExpense.amount !== payload.amount ||
+          editExpense.currency !== payload.currency ||
+          editExpense.participantIds.join() !== payload.participantIds.join() ||
+          (editExpense.split?.mode ?? "equal") !==
+            (payload.split?.mode ?? "equal") ||
+          JSON.stringify(editExpense.split?.parts ?? null) !==
+            JSON.stringify(
+              payload.split && payload.split.mode !== "equal"
+                ? payload.split.parts
+                : null,
+            );
         resetExpenseForm();
-        onAdded("Updated expense. Debts recomputed");
+        onAdded("Updated expense", { agent: money });
         closeForms();
       } else {
         await client.addExpense(payload);
         resetExpenseForm();
-        onAdded("Added expense. Debts recomputed");
+        onAdded("Added expense", { agent: true });
         setOpen(null);
       }
     } catch (e) {
@@ -523,9 +560,13 @@ export function AddDataForms({
                   ? "Add a traveler first"
                   : "Add an expense"
               }
-              className={`btn-ghost !px-3 !py-1.5 text-xs ${
-                open === "expense" ? "bg-white/[0.08]" : ""
-              }`}
+              className={
+                highlightExpense && open !== "expense"
+                  ? "btn-primary !px-3 !py-1.5 text-xs"
+                  : `btn-ghost !px-3 !py-1.5 text-xs ${
+                      open === "expense" ? "bg-white/[0.08]" : ""
+                    }`
+              }
             >
               <IconPlus className="h-3.5 w-3.5" /> Expense
             </button>
@@ -883,6 +924,10 @@ export function AddDataForms({
             </div>
           )}
 
+          <p className="text-slate-500 sm:col-span-2 text-[11px] leading-5">
+            The agent nets this across the trip and picks the cheapest rail and
+            FX for each send. Nothing is settled until you confirm.
+          </p>
           <div className="flex gap-2 sm:col-span-2">
             <button
               type="button"

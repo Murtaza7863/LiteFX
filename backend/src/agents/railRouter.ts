@@ -54,7 +54,7 @@ export function routeObligation(ob: NetObligation): RoutingDecision | null {
 
   let reason: string;
   if (pick.type === "claim_link") {
-    reason = `Recipient "${recipient.name.trim()}" has no linked account — claim_link so they can choose a payout without signing up.`;
+    reason = `Recipient "${recipient.name.trim()}" has no linked account. Claim link so they can choose a payout without signing up.`;
   } else {
     const alts = corridorOptions(sender.country, recipient.country).filter(
       (o) => o.railName !== pick.railName,
@@ -187,7 +187,7 @@ export function overrideRail(
   if (!row) throw new Error("That rail is not available on this corridor.");
   if (!row.eligible) {
     throw new Error(
-      `Recipient has no linked account — link ${primaryRail(recipient.country)} first, or keep the claim link.`,
+      `Recipient has no linked account. Link ${primaryRail(recipient.country)} first, or keep the claim link.`,
     );
   }
 
@@ -249,8 +249,8 @@ function buildConsidered(
       chosen: chosen === "claim_link",
       eligible: true,
       note: hasAccount
-        ? "Works without a linked account — slower and a 1% fee."
-        : "Recipient has no linked account — the only way to pay them.",
+        ? "Works without a linked account. Slower, and a 1% fee."
+        : "Recipient has no linked account. The only way to pay them.",
     },
   ];
   const corridor = corridorOptions(sender.country, recipient.country);
@@ -264,7 +264,7 @@ function buildConsidered(
       chosen: isChosen,
       eligible: hasAccount,
       note: !hasAccount
-        ? "Ineligible — recipient has no account on this rail."
+        ? "Ineligible. Recipient has no account on this rail."
         : isChosen
           ? "Selected."
           : `${o.feeEstimatePct}% fee / ${o.timeEstimateHours}h.`,
@@ -287,4 +287,15 @@ export function rebuildSettlement(): boolean {
   runNetting();
   runRouting();
   return true;
+}
+
+/**
+ * If the trip has IOUs but no live plan, net everyone and pick the cheapest
+ * rails. No-ops when already routed, so a description-only edit stays put.
+ * Does not settle: ledger / claim links stay user-confirmed.
+ */
+export function ensureLiveSettlement(): boolean {
+  if (getStore().debtEdges.length === 0) return false;
+  if (getStore().netObligations.length > 0) return false;
+  return rebuildSettlement();
 }

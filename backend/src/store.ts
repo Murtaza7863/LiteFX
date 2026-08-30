@@ -1164,17 +1164,24 @@ export function updateEntity(
   return e;
 }
 
+export function expenseChangesMoney(prev: Expense, next: Expense): boolean {
+  const splitKey = (s: Expense["split"]) =>
+    !s || s.mode === "equal" ? "equal" : JSON.stringify(s);
+  return (
+    prev.payerId !== next.payerId ||
+    prev.amount !== next.amount ||
+    prev.currency !== next.currency ||
+    prev.participantIds.join() !== next.participantIds.join() ||
+    splitKey(prev.split) !== splitKey(next.split)
+  );
+}
+
 export function updateExpense(id: string, next: Expense): Expense | null {
   const st = getStore();
   const i = st.expenses.findIndex((e) => e.id === id);
   if (i < 0) return null;
   const prev = st.expenses[i];
-  const moneyChanged =
-    prev.payerId !== next.payerId ||
-    prev.amount !== next.amount ||
-    prev.currency !== next.currency ||
-    prev.participantIds.join() !== next.participantIds.join() ||
-    JSON.stringify(prev.split ?? null) !== JSON.stringify(next.split ?? null);
+  const moneyChanged = expenseChangesMoney(prev, next);
   st.expenses[i] = next;
   if (moneyChanged) {
     st.debtEdges = deriveDebtEdges(st.expenses);

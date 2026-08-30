@@ -260,6 +260,107 @@ test("POST /expenses classifies a title when category is omitted", async () => {
   assert.equal(override.body.expense.category, "transport");
 });
 
+test("POST /expenses live-routes the trip without settling", async () => {
+  asUser(() => seedStore());
+  const before = await json("/scenario");
+  assert.equal(before.body.netObligations.length, 0);
+
+  const added = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "ent-alice",
+      participantIds: ["ent-alice", "ent-bob"],
+      amount: 10,
+      currency: "SGD",
+      description: "Airport coffee",
+    }),
+  });
+  assert.equal(added.status, 200, added.body.message);
+
+  const after = await json("/scenario");
+  assert.ok(after.body.netObligations.length > 0);
+  assert.ok(after.body.nettingSummary?.netEdgeCount > 0);
+  assert.ok(
+    after.body.netObligations.every(
+      (o: { status: string; chosenRail?: string }) =>
+        o.status === "routed" && o.chosenRail,
+    ),
+  );
+  assert.equal(after.body.ledger.length, 0);
+});
+
+test("POST /entities on an unrouted trip does not auto-net", async () => {
+  asUser(() => seedStore());
+  const created = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "Sam", country: "US", railType: "zelle" }),
+  });
+  assert.equal(created.status, 200, created.body.message);
+  const scenario = await json("/scenario");
+  assert.equal(scenario.body.netObligations.length, 0);
+});
+
+test("POST /entities after routing rebuilds the live plan", async () => {
+  asUser(() => seedStore());
+  await json("/engine/run", { method: "POST" });
+  const created = await json("/entities", {
+    method: "POST",
+    body: JSON.stringify({ name: "Sam", country: "US", railType: "zelle" }),
+  });
+  assert.equal(created.status, 200, created.body.message);
+  const scenario = await json("/scenario");
+  assert.ok(scenario.body.netObligations.length > 0);
+  assert.equal(scenario.body.ledger.length, 0);
+});
+
+test("PATCH expense description keeps nets; amount rebuilds without settling", async () => {
+  asUser(() =>
+    loadTrip(
+      [
+        traveler("a", "A", "US", "zelle"),
+        traveler("b", "B", "US", "zelle"),
+      ],
+    ),
+  );
+  const created = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "a",
+      participantIds: ["a", "b"],
+      amount: 40,
+      currency: "USD",
+      description: "Dinner",
+    }),
+  });
+  assert.equal(created.status, 200, created.body.message);
+  const id = created.body.expense.id as string;
+  const routed = await json("/scenario");
+  const netCount = routed.body.netObligations.length;
+  assert.ok(netCount > 0);
+
+  const renamed = await json(`/expenses/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ description: "Late dinner" }),
+  });
+  assert.equal(renamed.status, 200, renamed.body.message);
+  const still = await json("/scenario");
+  assert.equal(still.body.netObligations.length, netCount);
+
+  const bumped = await json(`/expenses/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ amount: 80 }),
+  });
+  assert.equal(bumped.status, 200, bumped.body.message);
+  const rebuilt = await json("/scenario");
+  assert.ok(rebuilt.body.netObligations.length > 0);
+  assert.equal(rebuilt.body.ledger.length, 0);
+  assert.ok(
+    rebuilt.body.netObligations.every(
+      (o: { status: string }) => o.status !== "settled",
+    ),
+  );
+});
+
 test("POST /engine/run nets and routes the sample trip", async () => {
   asUser(() => seedStore());
   const { status, body } = await json("/engine/run", { method: "POST" });
@@ -325,6 +426,51 @@ test("POST /entities then GET /scenario includes the traveler", async () => {
   const scenario = await json("/scenario");
   assert.equal(scenario.body.entities.length, 1);
   assert.equal(scenario.body.entities[0].name, "Sam");
+});
+
+test("DELETE /expenses keeps a live plan when other bills remain", async () => {
+  asUser(() =>
+    loadTrip([
+      traveler("a", "A", "US", "zelle"),
+      traveler("b", "B", "US", "zelle"),
+    ]),
+  );
+  const first = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "a",
+      participantIds: ["a", "b"],
+      amount: 40,
+      currency: "USD",
+      description: "Lunch",
+    }),
+  });
+  const second = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "b",
+      participantIds: ["a", "b"],
+      amount: 20,
+      currency: "USD",
+      description: "Coffee",
+    }),
+  });
+  assert.equal(first.status, 200, first.body.message);
+  assert.equal(second.status, 200, second.body.message);
+  const id = second.body.expense.id as string;
+  const before = await json("/scenario");
+  assert.ok(before.body.netObligations.length > 0);
+  const removed = await json(`/expenses/${id}`, { method: "DELETE" });
+  assert.equal(removed.status, 200);
+  const after = await json("/scenario");
+  assert.equal(after.body.expenses.length, 1);
+  assert.ok(after.body.netObligations.length > 0);
+  assert.equal(after.body.ledger.length, 0);
+  assert.ok(
+    after.body.netObligations.every(
+      (o: { status: string }) => o.status === "routed",
+    ),
+  );
 });
 
 test("DELETE /expenses/:id removes the expense", async () => {
@@ -766,4 +912,150 @@ test("POST /entities rejects a foreign rail and accepts several domestic ones", 
   assert.equal(ok.status, 200, ok.body.message);
   assert.equal(ok.body.entity.linkedRailAliases.length, 2);
   assert.equal(ok.body.entity.linkedRailAliases[1].railType, "FAST");
+});
+
+test("3-minute demo: add a bill, remap, claim, settle, books stay closed", async () => {
+  asUser(() => seedStore());
+  const fresh = await json("/scenario");
+  assert.equal(fresh.body.netObligations.length, 0);
+  assert.ok(fresh.body.expenses.length >= 8);
+  assert.ok(fresh.body.debtEdges.length > 8);
+  assert.doesNotMatch(
+    fresh.body.expenses.map((e: { description: string }) => e.description).join(" "),
+    /—/,
+  );
+
+  const coffee = await json("/expenses", {
+    method: "POST",
+    body: JSON.stringify({
+      payerId: "ent-alice",
+      participantIds: ["ent-alice", "ent-bob"],
+      amount: 80,
+      currency: "SGD",
+      description: "Airport coffee",
+    }),
+  });
+  assert.equal(coffee.status, 200, coffee.body.message);
+
+  const routed = await json("/scenario");
+  assert.ok(routed.body.netObligations.length > 0);
+  assert.ok(routed.body.nettingSummary.netEdgeCount < routed.body.nettingSummary.rawEdgeCount);
+  assert.ok(routed.body.nettingSummary.feeSavingsUsd > 0);
+  assert.equal(routed.body.ledger.length, 0);
+  assert.ok(
+    routed.body.netObligations.every(
+      (o: {
+        status: string;
+        chosenRail?: string;
+        considered?: { chosen?: boolean; railName: string }[];
+      }) => {
+        const name = o.considered?.find((c) => c.chosen)?.railName ?? "";
+        return (
+          o.status === "routed" &&
+          !!o.chosenRail &&
+          name.length > 0 &&
+          name !== "local"
+        );
+      },
+    ),
+  );
+  assert.doesNotMatch(routed.body.plan.text, /—/);
+
+  const bob = await json("/entities/ent-bob", {
+    method: "PATCH",
+    body: JSON.stringify({ country: "JP" }),
+  });
+  assert.equal(bob.status, 200, bob.body.message);
+  assert.equal(bob.body.entity.country, "JP");
+  assert.equal(bob.body.entity.linkedRailAliases[0].railType, "Zengin");
+  assert.ok(
+    !bob.body.entity.linkedRailAliases.some(
+      (a: { railType: string }) => /promptpay/i.test(a.railType),
+    ),
+  );
+
+  const remapped = await json("/scenario");
+  assert.ok(remapped.body.netObligations.length > 0);
+  const bobPays = remapped.body.netObligations.filter(
+    (o: { to: string; from: string }) =>
+      o.to === "ent-bob" || o.from === "ent-bob",
+  );
+  assert.ok(bobPays.length > 0);
+  assert.ok(
+    bobPays.every(
+      (o: { considered?: { chosen?: boolean; railName: string }[] }) => {
+        const name = o.considered?.find((c) => c.chosen)?.railName ?? "";
+        return !/promptpay/i.test(name);
+      },
+    ),
+  );
+
+  const eve = await json("/entities/ent-eve", {
+    method: "PATCH",
+    body: JSON.stringify({ linkedRailAliases: [] }),
+  });
+  assert.equal(eve.status, 200, eve.body.message);
+  const claimed = await json("/scenario");
+  const claimOb = claimed.body.netObligations.find(
+    (o: { chosenRail?: string; to: string }) =>
+      o.to === "ent-eve" && o.chosenRail === "claim_link",
+  );
+  assert.ok(claimOb, "Eve should be paid via claim link with no rails");
+
+  const localOb = claimed.body.netObligations.find(
+    (o: { chosenRail?: string; status: string; id: string }) =>
+      o.chosenRail !== "claim_link" && o.status === "routed",
+  );
+  assert.ok(localOb);
+  const settled = await json(`/settlement/${localOb.id}/settle`, {
+    method: "POST",
+  });
+  assert.equal(settled.status, 200, settled.body.message);
+  assert.equal(settled.body.success, true);
+  assert.equal(settled.body.link, undefined);
+
+  const afterSettle = await json("/scenario");
+  assert.equal(afterSettle.body.ledger.length, 1);
+  assert.ok(
+    afterSettle.body.netObligations.some(
+      (o: { status: string }) => o.status === "routed",
+    ),
+    "other sends stay open until confirmed",
+  );
+
+  const claimSettle = await json(`/settlement/${claimOb.id}/settle`, {
+    method: "POST",
+  });
+  assert.equal(claimSettle.status, 200, claimSettle.body.message);
+  const token = claimSettle.body.link?.token as string;
+  assert.ok(token);
+
+  const page = await fetch(base.replace(/\/api$/, "") + `/claim/${token}`);
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /choose a local payout/i);
+  assert.doesNotMatch(html, /—/);
+
+  const details = await json(`/claim/${token}`);
+  const method = details.body.payoutOptions[0] as string;
+  assert.ok(method);
+  const paid = await json(`/claim/${token}/claim`, {
+    method: "POST",
+    body: JSON.stringify({ payoutMethod: method }),
+  });
+  assert.equal(paid.status, 200, paid.body.message);
+  assert.equal(paid.body.success, true);
+
+  const done = await json("/scenario");
+  assert.ok(
+    done.body.netObligations.some(
+      (o: { id: string; status: string }) =>
+        o.id === claimOb.id && o.status === "settled",
+    ),
+  );
+  const books = done.body.nettingSummary.balances as {
+    netUsd: number;
+  }[];
+  const sum = books.reduce((s, b) => s + b.netUsd, 0);
+  assert.ok(Math.abs(sum) < 0.05, `books should close, got ${sum}`);
 });

@@ -99,7 +99,7 @@ export function recapText(input: {
   const lines: string[] = [`LiteFX · ${input.tripName}`];
   if (input.netting) {
     lines.push(
-      `${input.netting.rawEdgeCount} IOUs became ${input.netting.netEdgeCount} transfers. Est. fees saved $${input.netting.feeSavingsUsd.toFixed(2)} vs paying each IOU.`,
+      `${input.netting.rawEdgeCount} IOUs became ${input.netting.netEdgeCount} transfers. Agent picked cheapest corridors. Est. fees saved $${input.netting.feeSavingsUsd.toFixed(2)} vs paying each IOU.`,
     );
     if ((input.netting.corridorSavingsUsd ?? 0) > 0) {
       const greedy =

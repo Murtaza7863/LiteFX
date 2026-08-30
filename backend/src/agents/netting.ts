@@ -204,7 +204,7 @@ export function matchCheapestCorridor(
 
     const sender = entityById(entities, ds[best.di].id);
     const recipient = entityById(entities, cs[best.ci].id);
-    const reason = `Matched ${sender?.name.trim() ?? ds[best.di].id} → ${recipient?.name.trim() ?? cs[best.ci].id} on ${best.railName} (${best.feePct}% fee) — cheapest remaining corridor.`;
+    const reason = `Matched ${sender?.name.trim() ?? ds[best.di].id} → ${recipient?.name.trim() ?? cs[best.ci].id} on ${best.railName} (${best.feePct}% fee). Cheapest remaining corridor.`;
 
     obligations.push(
       makeObligation(

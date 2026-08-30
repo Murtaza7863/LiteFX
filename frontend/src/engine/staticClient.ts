@@ -27,6 +27,7 @@ import {
   linkRecipientAccount,
   overrideRail,
   rebuildSettlement,
+  ensureLiveSettlement,
   rerouteUnsettled,
   runRouting,
 } from "../../../backend/src/agents/railRouter";
@@ -50,6 +51,7 @@ import {
   deleteExpense,
   deleteTrip,
   duplicateTrip,
+  expenseChangesMoney,
   findUserByEmail,
   findUserById,
   getStore,
@@ -364,9 +366,11 @@ export const staticClient = {
   }) => {
     await boot();
     return asUser(() => {
+      const hadNets = getStore().netObligations.length > 0;
       if (body.contactId) {
         const result = addEntityFromContact(body.contactId);
         if ("error" in result) throw new Error(result.error);
+        if (hadNets) ensureLiveSettlement();
         return { success: true, entity: result };
       }
       const name = (body.name ?? "").trim();
@@ -402,6 +406,7 @@ export const staticClient = {
         linkedRailAliases: aliases,
       });
       if ("error" in result) throw new Error(result.error);
+      if (hadNets) ensureLiveSettlement();
       return { success: true, entity: result };
     });
   },
@@ -415,6 +420,7 @@ export const staticClient = {
         ...parsed,
       };
       addExpense(expense);
+      ensureLiveSettlement();
       return { success: true, expense };
     });
   },
@@ -487,18 +493,32 @@ export const staticClient = {
       const existing = getStore().expenses.find((e) => e.id === id);
       if (!existing) throw new Error("Expense not found.");
       const parsed = parseExpenseFields(body, existing);
-      const expense = updateExpense(id, { ...existing, ...parsed });
+      const next = { ...existing, ...parsed };
+      const hadNets = getStore().netObligations.length > 0;
+      const money = expenseChangesMoney(existing, next);
+      const expense = updateExpense(id, next);
       if (!expense) throw new Error("Expense not found.");
+      if (money || hadNets) ensureLiveSettlement();
       return { success: true, expense };
     });
   },
   deleteExpense: async (id: string) => {
     await boot();
-    return asUser(() => ({ success: deleteExpense(id) }));
+    return asUser(() => {
+      const hadNets = getStore().netObligations.length > 0;
+      const success = deleteExpense(id);
+      if (success && hadNets) ensureLiveSettlement();
+      return { success };
+    });
   },
   deleteEntity: async (id: string) => {
     await boot();
-    return asUser(() => ({ success: deleteEntity(id) }));
+    return asUser(() => {
+      const hadNets = getStore().netObligations.length > 0;
+      const success = deleteEntity(id);
+      if (success && hadNets) ensureLiveSettlement();
+      return { success };
+    });
   },
   createTrip: async (name?: string) => {
     await boot();
@@ -577,8 +597,10 @@ export const staticClient = {
   addMe: async () => {
     await boot();
     return asUser(() => {
+      const hadNets = getStore().netObligations.length > 0;
       const result = addMeToTrip();
       if ("error" in result) throw new Error(result.error);
+      if (hadNets) ensureLiveSettlement();
       return { success: true as const, entity: result };
     });
   },

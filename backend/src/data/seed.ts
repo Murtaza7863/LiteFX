@@ -70,7 +70,7 @@ export const SEED_EXPENSES: Expense[] = [
     currency: "THB",
     tripId: "trip-bkk-2026",
     category: "accommodation",
-    description: "Hotel — 3 nights in Bangkok",
+    description: "Hotel, 3 nights in Bangkok",
   },
   {
     id: "exp-2",

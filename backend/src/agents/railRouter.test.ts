@@ -14,6 +14,7 @@ import {
   runRouting,
   overrideRail,
   linkRecipientAccount,
+  ensureLiveSettlement,
 } from "./railRouter.js";
 import {
   COUNTRIES,
@@ -223,4 +224,18 @@ test("moving Eve to any listed country remaps her rail and stays legal", () => {
     assertCorridorsLegal();
     clearStore();
   }
+});
+
+test("ensureLiveSettlement nets only when debts exist and the trip is unrouted", () => {
+  seedStore();
+  assert.equal(getStore().netObligations.length, 0);
+  assert.equal(ensureLiveSettlement(), true);
+  assert.ok(getStore().netObligations.length > 0);
+  assert.ok(
+    getStore().netObligations.every(
+      (o) => o.status === "routed" && o.chosenRail,
+    ),
+  );
+  assert.equal(ensureLiveSettlement(), false);
+  assert.equal(getStore().ledger.length, 0);
 });
